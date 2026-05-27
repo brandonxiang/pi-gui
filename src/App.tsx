@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Bubble, { type BubbleItemType, type BubbleListProps } from "@ant-design/x/es/bubble";
 import Sender from "@ant-design/x/es/sender";
+import Suggestion, { type SuggestionItem } from "@ant-design/x/es/suggestion";
 import XProvider from "@ant-design/x/es/x-provider";
 import type { AssistantMessage, ChatMessage, StreamEvent, UserMessage } from "./types";
 
@@ -15,9 +16,34 @@ const modelPresets = [
 ];
 
 type ModelOption = (typeof modelPresets)[number];
+type SlashSuggestionInfo = { query: string };
 
 const defaultSystemPrompt =
   "You are My Pi, an online agent conversation assistant. Be concise, practical, and explicit about assumptions.";
+
+const slashCommands = [
+  { name: "settings", description: "Open settings menu" },
+  { name: "model", description: "Select model" },
+  { name: "scoped-models", description: "Enable or disable model cycling" },
+  { name: "export", description: "Export session" },
+  { name: "import", description: "Import a JSONL session" },
+  { name: "share", description: "Share session as a private gist" },
+  { name: "copy", description: "Copy last assistant message" },
+  { name: "name", description: "Set session display name" },
+  { name: "session", description: "Show session info and stats" },
+  { name: "changelog", description: "Show changelog entries" },
+  { name: "hotkeys", description: "Show keyboard shortcuts" },
+  { name: "fork", description: "Fork from a previous message" },
+  { name: "clone", description: "Duplicate current session branch" },
+  { name: "tree", description: "Navigate session tree" },
+  { name: "login", description: "Configure provider authentication" },
+  { name: "logout", description: "Remove provider authentication" },
+  { name: "new", description: "Start a new session" },
+  { name: "compact", description: "Compact session context" },
+  { name: "resume", description: "Resume a different session" },
+  { name: "reload", description: "Reload resources" },
+  { name: "quit", description: "Quit pi" }
+];
 
 const bubbleRoles: BubbleListProps["role"] = {
   assistant: {
@@ -92,6 +118,28 @@ function createBubbleItem(message: ChatMessage, index: number): BubbleItemType {
       />
     )
   };
+}
+
+function shouldShowSlashSuggestions(value: string) {
+  return /^\/[\w-]*$/.test(value);
+}
+
+function getSlashSuggestionItems(info?: SlashSuggestionInfo): SuggestionItem[] {
+  const query = info?.query.toLowerCase() || "";
+  const matchedCommands = slashCommands.filter((command) =>
+    command.name.toLowerCase().includes(query)
+  );
+
+  return matchedCommands.map((command) => ({
+    label: (
+      <div className="slash-command-option">
+        <span>/{command.name}</span>
+        <small>{command.description}</small>
+      </div>
+    ),
+    value: `/${command.name}`,
+    extra: <span className="slash-command-source">pi</span>
+  }));
 }
 
 function readStoredMessages(): ChatMessage[] {
@@ -267,6 +315,10 @@ export default function App() {
     localStorage.removeItem(STORAGE_KEY);
   }
 
+  function handleSlashSelect(value: string) {
+    setInput(`${value} `);
+  }
+
   return (
     <XProvider theme={xTheme}>
       <main className="app-shell">
@@ -342,17 +394,34 @@ export default function App() {
           )}
 
           <div className="composer">
-            <Sender
-              autoSize={{ minRows: 2, maxRows: 8 }}
-              className="chat-sender"
-              disabled={isStreaming}
-              loading={isStreaming}
-              onChange={setInput}
-              onSubmit={submitMessage}
-              placeholder="Ask the agent to reason, plan, or draft..."
-              submitType="enter"
-              value={input}
-            />
+            <Suggestion<SlashSuggestionInfo>
+              block
+              className="slash-command-suggestion"
+              items={getSlashSuggestionItems}
+              onSelect={handleSlashSelect}
+            >
+              {({ onKeyDown, onTrigger }) => (
+                <Sender
+                  autoSize={{ minRows: 2, maxRows: 8 }}
+                  className="chat-sender"
+                  disabled={isStreaming}
+                  loading={isStreaming}
+                  onChange={(value) => {
+                    setInput(value);
+                    onTrigger(
+                      shouldShowSlashSuggestions(value)
+                        ? { query: value.slice(1) }
+                        : false
+                    );
+                  }}
+                  onKeyDown={onKeyDown}
+                  onSubmit={submitMessage}
+                  placeholder="Ask the agent to reason, plan, or draft..."
+                  submitType="enter"
+                  value={input}
+                />
+              )}
+            </Suggestion>
           </div>
         </section>
       </main>
