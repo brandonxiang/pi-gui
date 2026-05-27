@@ -11,6 +11,8 @@ const modelPresets = [
   { provider: "mistral", model: "mistral-small-latest", label: "Mistral Small" }
 ];
 
+type ModelOption = (typeof modelPresets)[number];
+
 const defaultSystemPrompt =
   "You are My Pi, an online agent conversation assistant. Be concise, practical, and explicit about assumptions.";
 
@@ -81,6 +83,7 @@ export default function App() {
   const [input, setInput] = useState("");
   const [systemPrompt, setSystemPrompt] = useState(defaultSystemPrompt);
   const [modelKey, setModelKey] = useState("openai:gpt-4o-mini");
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>(modelPresets);
   const [draftAssistant, setDraftAssistant] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -94,6 +97,35 @@ export default function App() {
 
   useEffect(() => {
     sessionIdRef.current = createSessionId();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadModels() {
+      try {
+        const response = await fetch("/api/models");
+        if (!response.ok) return;
+        const body = (await response.json()) as { models?: ModelOption[] };
+        if (cancelled || !body.models?.length) return;
+
+        setModelOptions(body.models);
+        setModelKey((current) => {
+          const currentExists = body.models?.some(
+            (option) => `${option.provider}:${option.model}` === current
+          );
+          return currentExists ? current : `${body.models![0].provider}:${body.models![0].model}`;
+        });
+      } catch {
+        // Keep static presets when the model registry endpoint is unavailable.
+      }
+    }
+
+    loadModels();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -189,7 +221,7 @@ export default function App() {
         <label className="field">
           <span>Model</span>
           <select value={modelKey} onChange={(event) => setModelKey(event.target.value)}>
-            {modelPresets.map((preset) => (
+            {modelOptions.map((preset) => (
               <option key={`${preset.provider}:${preset.model}`} value={`${preset.provider}:${preset.model}`}>
                 {preset.label}
               </option>

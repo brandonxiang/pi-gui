@@ -70,6 +70,26 @@ function configureRuntimeAuth(authStorage: AuthStorage) {
   }
 }
 
+function createLocalModelRegistry() {
+  const authStorage = AuthStorage.create();
+  configureRuntimeAuth(authStorage);
+  return {
+    authStorage,
+    modelRegistry: ModelRegistry.create(authStorage)
+  };
+}
+
+app.get("/api/models", (_req, res) => {
+  const { modelRegistry } = createLocalModelRegistry();
+  const models = modelRegistry.getAvailable().map((model) => ({
+    provider: model.provider,
+    model: model.id,
+    label: `${model.name || model.id} (${model.provider})`
+  }));
+
+  res.json({ models });
+});
+
 async function getOrCreateSession(
   sessionId: string,
   provider: string,
@@ -88,9 +108,7 @@ async function getOrCreateSession(
 
   existing?.session.dispose();
 
-  const authStorage = AuthStorage.inMemory();
-  configureRuntimeAuth(authStorage);
-  const modelRegistry = ModelRegistry.inMemory(authStorage);
+  const { authStorage, modelRegistry } = createLocalModelRegistry();
   const model = modelRegistry.find(provider, modelId);
 
   if (!model) {

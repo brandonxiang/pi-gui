@@ -12,7 +12,7 @@ model credentials and the Pi agent session runtime on the server.
 - Model selector for common OpenAI, Anthropic, Google, and Mistral models
 - Editable system prompt
 - Browser-side conversation transcript persistence
-- Server-side API key handling
+- Server-side API key handling through local Pi auth plus optional `.env` overrides
 
 ## Quick Start
 
@@ -21,7 +21,10 @@ npm install
 cp .env.example .env
 ```
 
-Set at least one provider key in `.env`, for example:
+If you already use Pi locally, the server reads your existing Pi auth from
+`~/.pi/agent/auth.json` and custom models from `~/.pi/agent/models.json`.
+
+You can also set a provider key in `.env` to override local auth at runtime:
 
 ```bash
 OPENAI_API_KEY=sk-...
@@ -52,6 +55,8 @@ the built frontend.
 - The frontend sends only the latest user prompt and session metadata.
 - The backend keeps a per-browser-session `AgentSession` in memory and streams
   `message_update` deltas back to the browser.
+- `AuthStorage.create()` and `ModelRegistry.create()` load the same local auth
+  and model registry that the Pi CLI uses.
 
 By default the server starts Pi sessions with `noTools: "all"` so the online
 chat cannot execute shell or file mutation tools. Add a deliberate tool allowlist

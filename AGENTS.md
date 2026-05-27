@@ -15,6 +15,8 @@ Build and maintain a browser-based agent dialogue tool backed by
 ## Implementation Rules
 
 - Keep API keys on the server. Do not expose model provider keys in frontend code.
+- Server auth should read local Pi credentials from `~/.pi/agent/auth.json` by default,
+  with `.env` provider keys as runtime overrides.
 - Use `@earendil-works/pi-coding-agent` for agent sessions; do not replace it with
   direct provider calls unless the user explicitly asks.
 - Default online sessions should not enable shell or file mutation tools.
