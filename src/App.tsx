@@ -16,6 +16,10 @@ type ModelOption = (typeof modelPresets)[number];
 const defaultSystemPrompt =
   "You are My Pi, an online agent conversation assistant. Be concise, practical, and explicit about assumptions.";
 
+type MessageContentPart =
+  | { type: "text"; value: string }
+  | { type: "code"; value: string; language: string };
+
 function createSessionId() {
   const stored = localStorage.getItem("my-pi-session-id");
   if (stored) return stored;
@@ -26,6 +30,86 @@ function createSessionId() {
 
 function getMessageText(message: ChatMessage) {
   return message.content;
+}
+
+function parseMessageContent(content: string): MessageContentPart[] {
+  const parts: MessageContentPart[] = [];
+  const fencePattern = /```([^\n`]*)\n?([\s\S]*?)```/g;
+  let lastIndex = 0;
+
+  for (const match of content.matchAll(fencePattern)) {
+    const matchIndex = match.index ?? 0;
+    if (matchIndex > lastIndex) {
+      parts.push({ type: "text", value: content.slice(lastIndex, matchIndex) });
+    }
+
+    parts.push({
+      type: "code",
+      language: match[1].trim(),
+      value: match[2].replace(/\n$/, "")
+    });
+    lastIndex = matchIndex + match[0].length;
+  }
+
+  if (lastIndex < content.length) {
+    parts.push({ type: "text", value: content.slice(lastIndex) });
+  }
+
+  return parts.length ? parts : [{ type: "text", value: content }];
+}
+
+function renderInlineCode(text: string) {
+  return text.split(/(`[^`\n]+`)/g).map((part, index) => {
+    if (part.startsWith("`") && part.endsWith("`")) {
+      return (
+        <code className="inline-code" key={`${part}-${index}`}>
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+
+    return <span key={`${part}-${index}`}>{part}</span>;
+  });
+}
+
+function isCommandLanguage(language: string) {
+  return ["bash", "shell", "sh", "zsh", "fish", "powershell", "ps1", "cmd"].includes(
+    language.toLowerCase()
+  );
+}
+
+function MessageContent({ text }: { text: string }) {
+  return (
+    <div className="message-content">
+      {parseMessageContent(text).map((part, index) => {
+        if (part.type === "code") {
+          const label = isCommandLanguage(part.language) ? "Command" : "Code";
+
+          return (
+            <figure className="code-block" key={`${part.type}-${index}`}>
+              <figcaption>
+                <span>{label}</span>
+                {part.language && <small>{part.language}</small>}
+              </figcaption>
+              <pre>
+                <code>{part.value}</code>
+              </pre>
+            </figure>
+          );
+        }
+
+        return part.value.split(/\n{2,}/).map((paragraph, paragraphIndex) => {
+          if (!paragraph) return null;
+
+          return (
+            <p key={`${part.type}-${index}-${paragraphIndex}`}>
+              {renderInlineCode(paragraph)}
+            </p>
+          );
+        });
+      })}
+    </div>
+  );
 }
 
 function readStoredMessages(): ChatMessage[] {
@@ -73,7 +157,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         <span>{message.role === "assistant" ? "My Pi" : "You"}</span>
         <small>{meta}</small>
       </div>
-      <p>{text}</p>
+      <MessageContent text={text} />
     </article>
   );
 }
@@ -278,7 +362,7 @@ export default function App() {
                 <span>My Pi</span>
                 <small>streaming</small>
               </div>
-              <p>{draftAssistant}</p>
+              <MessageContent text={draftAssistant} />
             </article>
           )}
 
