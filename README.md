@@ -9,7 +9,7 @@ model credentials and the Pi agent session runtime on the server.
 - Online chat interface for Pi-powered agent conversations
 - Server-side `createAgentSession()` integration from `@earendil-works/pi-coding-agent`
 - Streaming assistant responses over Server-Sent Events
-- Model selector for common OpenAI, Anthropic, Google, and Mistral models
+- Model selector for common OpenAI, Anthropic, Google, Mistral, and Command Code models
 - Editable system prompt
 - Browser-side conversation transcript persistence
 - Server-side API key handling through local Pi auth plus optional `.env` overrides
@@ -23,12 +23,19 @@ cp .env.example .env
 
 If you already use Pi locally, the server reads your existing Pi auth from
 `~/.pi/agent/auth.json` and custom models from `~/.pi/agent/models.json`.
+It also detects Command Code CLI login credentials from
+`~/.commandcode/auth.json`.
 
 You can also set a provider key in `.env` to override local auth at runtime:
 
 ```bash
 OPENAI_API_KEY=sk-...
+COMMANDCODE_API_KEY=user_...
 ```
+
+When Command Code auth is present, the server fetches live models from
+`https://api.commandcode.ai/provider/v1/models` and registers them under the
+`commandcode` provider.
 
 Start the app:
 
