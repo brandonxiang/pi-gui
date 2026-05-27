@@ -2,8 +2,35 @@
   color-scheme: light;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #f4f2ec;
-  color: #161616;
+  --primary: #5645d4;
+  --primary-pressed: #4534b3;
+  --brand-navy: #0a1530;
+  --brand-navy-deep: #070f24;
+  --brand-navy-mid: #1a2a52;
+  --link-blue: #0075de;
+  --brand-pink: #ff64c8;
+  --brand-teal: #2a9d99;
+  --brand-yellow: #f5d75e;
+  --canvas: #ffffff;
+  --surface: #f6f5f4;
+  --surface-soft: #fafaf9;
+  --hairline: #e5e3df;
+  --hairline-soft: #ede9e4;
+  --hairline-strong: #c8c4be;
+  --ink: #1a1a1a;
+  --charcoal: #37352f;
+  --slate: #5d5b54;
+  --steel: #787671;
+  --muted: #bbb8b1;
+  --on-dark: #ffffff;
+  --on-dark-muted: #a4a097;
+  --card-tint-mint: #d9f3e1;
+  --card-tint-lavender: #e6e0f5;
+  --card-tint-sky: #dcecfa;
+  --card-tint-yellow: #fef7d6;
+  --semantic-error: #e03131;
+  background: var(--surface);
+  color: var(--ink);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -26,26 +53,54 @@ textarea {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
+  grid-template-columns: 372px minmax(0, 1fr);
   min-height: 100vh;
+  background: var(--surface);
 }
 
 .sidebar {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 24px;
   padding: 32px;
-  border-right: 1px solid #ddd6c8;
-  background: #fcfbf7;
+  overflow: hidden;
+  border-right: 1px solid var(--brand-navy-mid);
+  background: var(--brand-navy);
+  color: var(--on-dark);
+}
+
+.sidebar::before {
+  position: absolute;
+  top: 28px;
+  right: 28px;
+  width: 120px;
+  height: 96px;
+  background:
+    radial-gradient(circle at 12px 12px, var(--brand-yellow) 0 5px, transparent 6px),
+    radial-gradient(circle at 58px 22px, var(--brand-pink) 0 5px, transparent 6px),
+    radial-gradient(circle at 100px 54px, var(--brand-teal) 0 5px, transparent 6px),
+    radial-gradient(circle at 32px 72px, var(--primary) 0 5px, transparent 6px);
+  content: "";
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.sidebar > * {
+  position: relative;
 }
 
 .eyebrow {
   margin: 0 0 8px;
-  color: #6c5f4b;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  color: var(--steel);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
   text-transform: uppercase;
+}
+
+.sidebar .eyebrow {
+  color: var(--on-dark-muted);
 }
 
 h1,
@@ -57,37 +112,59 @@ p {
 
 h1 {
   margin-bottom: 12px;
-  font-size: 34px;
-  line-height: 1.05;
+  max-width: 280px;
+  font-size: 42px;
+  font-weight: 600;
+  line-height: 1.1;
 }
 
 h2 {
   margin-bottom: 0;
-  font-size: 24px;
+  color: var(--charcoal);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.25;
 }
 
 .sidebar-copy {
-  color: #5d584f;
-  line-height: 1.6;
+  max-width: 300px;
+  color: var(--on-dark-muted);
+  font-size: 16px;
+  line-height: 1.55;
 }
 
 .field {
   display: grid;
   gap: 8px;
-  color: #4a443b;
+  color: var(--charcoal);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 500;
+}
+
+.sidebar .field {
+  color: var(--on-dark);
 }
 
 .field select,
 .field textarea,
 .composer textarea {
   width: 100%;
-  border: 1px solid #d7cebe;
+  border: 1px solid var(--hairline-strong);
   border-radius: 8px;
-  background: #fff;
-  color: #161616;
+  background: var(--canvas);
+  color: var(--ink);
   outline: none;
+}
+
+.sidebar .field select,
+.sidebar .field textarea {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--on-dark);
+}
+
+.sidebar .field select option {
+  color: var(--ink);
 }
 
 .field select {
@@ -105,8 +182,8 @@ h2 {
 .field select:focus,
 .field textarea:focus,
 .composer textarea:focus {
-  border-color: #24695c;
-  box-shadow: 0 0 0 3px rgba(36, 105, 92, 0.14);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(86, 69, 212, 0.16);
 }
 
 .secondary-button,
@@ -114,17 +191,19 @@ h2 {
   border: 0;
   border-radius: 8px;
   cursor: pointer;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .secondary-button {
   min-height: 42px;
-  background: #ece5d8;
-  color: #2d2922;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--on-dark);
 }
 
 .secondary-button:hover {
-  background: #e2dacb;
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .status-panel {
@@ -133,10 +212,10 @@ h2 {
   align-items: flex-start;
   margin-top: auto;
   padding: 16px;
-  border: 1px solid #ded5c8;
-  border-radius: 8px;
-  background: #f7f2e8;
-  color: #5b5347;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--on-dark-muted);
   line-height: 1.5;
 }
 
@@ -149,8 +228,8 @@ h2 {
   height: 10px;
   margin-top: 7px;
   border-radius: 999px;
-  background: #24695c;
-  box-shadow: 0 0 0 4px rgba(36, 105, 92, 0.14);
+  background: var(--brand-teal);
+  box-shadow: 0 0 0 4px rgba(42, 157, 153, 0.18);
 }
 
 .chat-panel {
@@ -166,8 +245,8 @@ h2 {
   justify-content: space-between;
   gap: 16px;
   padding: 28px 32px;
-  border-bottom: 1px solid #ddd6c8;
-  background: rgba(244, 242, 236, 0.82);
+  border-bottom: 1px solid var(--hairline);
+  background: rgba(250, 250, 249, 0.86);
   backdrop-filter: blur(14px);
 }
 
@@ -178,17 +257,17 @@ h2 {
   min-width: 86px;
   min-height: 34px;
   padding: 0 14px;
-  border: 1px solid #d7cebe;
+  border: 1px solid var(--hairline);
   border-radius: 999px;
-  background: #fff;
-  color: #5d584f;
+  background: var(--canvas);
+  color: var(--slate);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .pill-live {
-  border-color: #24695c;
-  color: #24695c;
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .messages {
@@ -197,28 +276,32 @@ h2 {
   gap: 16px;
   overflow-y: auto;
   padding: 32px;
+  background:
+    linear-gradient(180deg, rgba(250, 250, 249, 0.92), rgba(246, 245, 244, 0.96)),
+    var(--surface);
 }
 
 .empty-state {
   max-width: 560px;
   margin: auto;
   padding: 32px;
-  border: 1px dashed #cfc5b5;
-  border-radius: 8px;
-  color: #625b50;
+  border: 1px dashed var(--hairline-strong);
+  border-radius: 12px;
+  background: var(--canvas);
+  color: var(--slate);
   text-align: center;
 }
 
 .empty-state h3 {
-  color: #202020;
+  color: var(--charcoal);
 }
 
 .message {
   max-width: 760px;
   padding: 16px 18px;
-  border: 1px solid #ded5c8;
-  border-radius: 8px;
-  background: #fff;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--canvas);
   white-space: pre-wrap;
   line-height: 1.6;
 }
@@ -229,12 +312,13 @@ h2 {
 
 .message-user {
   align-self: flex-end;
-  border-color: #24695c;
-  background: #e9f4ef;
+  border-color: #d6b6f6;
+  background: var(--card-tint-lavender);
 }
 
 .message-assistant {
   align-self: flex-start;
+  border-color: var(--hairline);
 }
 
 .message-meta {
@@ -243,14 +327,14 @@ h2 {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 10px;
-  color: #6c5f4b;
+  color: var(--steel);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   text-transform: uppercase;
 }
 
 .message-meta small {
-  color: #7d7466;
+  color: var(--steel);
   font-size: 11px;
   text-transform: none;
 }
@@ -258,11 +342,11 @@ h2 {
 .error-banner {
   max-width: 760px;
   padding: 14px 16px;
-  border: 1px solid #e3a397;
+  border: 1px solid rgba(224, 49, 49, 0.26);
   border-radius: 8px;
   background: #fff0ed;
-  color: #8b2f22;
-  font-weight: 700;
+  color: var(--semantic-error);
+  font-weight: 600;
 }
 
 .composer {
@@ -270,18 +354,18 @@ h2 {
   grid-template-columns: minmax(0, 1fr) 112px;
   gap: 14px;
   padding: 20px 32px 28px;
-  border-top: 1px solid #ddd6c8;
-  background: #fcfbf7;
+  border-top: 1px solid var(--hairline);
+  background: var(--surface-soft);
 }
 
 .composer button {
   min-height: 64px;
-  background: #24695c;
-  color: #fff;
+  background: var(--primary);
+  color: var(--on-dark);
 }
 
 .composer button:hover:not(:disabled) {
-  background: #1d574d;
+  background: var(--primary-pressed);
 }
 
 .composer button:disabled {
@@ -296,7 +380,7 @@ h2 {
 
   .sidebar {
     border-right: 0;
-    border-bottom: 1px solid #ddd6c8;
+    border-bottom: 1px solid var(--brand-navy-mid);
   }
 
   .chat-panel {
