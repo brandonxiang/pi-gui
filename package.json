@@ -13,13 +13,15 @@
     "start": "NODE_ENV=production node dist-server/index.js"
   },
   "dependencies": {
+    "@ant-design/x": "^2.7.0",
     "@earendil-works/pi-coding-agent": "0.75.5",
     "@vitejs/plugin-react": "latest",
+    "antd": "^6.4.3",
     "express": "latest",
-    "vite": "latest",
-    "typescript": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "typescript": "latest",
+    "vite": "latest"
   },
   "devDependencies": {
     "@types/express": "latest",
