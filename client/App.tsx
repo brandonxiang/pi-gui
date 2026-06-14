@@ -4,6 +4,7 @@ import Bubble, { type BubbleItemType, type BubbleListProps } from "@ant-design/x
 import Sender from "@ant-design/x/es/sender";
 import Suggestion, { type SuggestionItem } from "@ant-design/x/es/suggestion";
 import XProvider from "@ant-design/x/es/x-provider";
+import MarkdownContent from "./MarkdownContent";
 import type {
   AssistantMessage,
   ChatMessage,
@@ -78,7 +79,13 @@ const bubbleRoles: BubbleListProps["role"] = {
     placement: "start",
     variant: "outlined",
     shape: "default",
-    className: "chat-bubble chat-bubble-assistant"
+    className: "chat-bubble chat-bubble-assistant",
+    contentRender(content) {
+      if (typeof content === "string") {
+        return <MarkdownContent content={content} />;
+      }
+      return content;
+    }
   },
   user: {
     placement: "end",
@@ -251,7 +258,7 @@ function createBubbleItem(message: ChatMessage, index: number): BubbleItemType {
     header: (
       <MessageHeader
         label={isAssistant ? "My Pi" : "You"}
-        meta={isAssistant ? `${message.provider}/${message.model}` : "You"}
+        meta={isAssistant ? `${message.provider}/${message.model}` : new Date(message.timestamp).toLocaleTimeString()}
       />
     )
   };
@@ -626,6 +633,7 @@ export default function App() {
     const requestId = piSessionRequestIdRef.current + 1;
     piSessionRequestIdRef.current = requestId;
     setActivePanelView({ kind: "pi", sessionId });
+    setPiSessionDetail(null);
     setPiSessionLoading(true);
     setPiSessionError(null);
     setError(null);
@@ -1127,149 +1135,67 @@ export default function App() {
             </div>
           )}
 
-          {isPiHistoryView ? (
-            !piSessionLoading && !piSessionError ? (
-              <div className="composer">
-                {selectedImage ? (
-                  <div className="attachment-preview">
-                    <img alt={selectedImage.name} src={getImageDataUrl(selectedImage)} />
-                    <div>
-                      <strong>{selectedImage.name}</strong>
-                      <span>{Math.ceil(selectedImage.size / 1024)} KB · image analysis</span>
-                    </div>
-                    <button type="button" onClick={() => setSelectedImage(null)}>
-                      Remove
-                    </button>
-                  </div>
-                ) : null}
-                <Suggestion<SlashSuggestionInfo>
-                  block
-                  className="slash-command-suggestion"
-                  items={getSlashSuggestionItems}
-                  onSelect={handleSlashSelect}
-                >
-                  {({ onKeyDown, onTrigger }) => (
-                    <Sender
-                      autoSize={{ minRows: 2, maxRows: 8 }}
-                      className="chat-sender"
-                      disabled={isStreaming}
-                      footer={
-                        <div className="composer-footer">
-                          <input
-                            ref={fileInputRef}
-                            accept={supportedImageMimeTypes.join(",")}
-                            onChange={handleImageChange}
-                            type="file"
-                          />
-                          <button
-                            disabled={isStreaming || !selectedModelSupportsImages}
-                            title={
-                              selectedModelSupportsImages
-                                ? "Upload image"
-                                : "Selected model does not support image input"
-                            }
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                          >
-                            Upload image
-                          </button>
-                        </div>
-                      }
-                      loading={isStreaming}
-                      onChange={(value) => {
-                        setInput(value);
-                        onTrigger(
-                          shouldShowSlashSuggestions(value)
-                            ? { query: value.slice(1) }
-                            : false
-                        );
-                      }}
-                      onKeyDown={(e) => {
-                        // Stop propagation to prevent parent BaseSelect
-                        // from intercepting space key (and others)
-                        e.stopPropagation();
-                        onKeyDown(e);
-                      }}
-                      onSubmit={submitMessage}
-                      placeholder="Continue this Pi session..."
-                      submitType="enter"
-                      value={input}
-                    />
-                  )}
-                </Suggestion>
-              </div>
-            ) : null
-          ) : (
-            <div className="composer">
-              {selectedImage ? (
-                <div className="attachment-preview">
-                  <img alt={selectedImage.name} src={getImageDataUrl(selectedImage)} />
-                  <div>
-                    <strong>{selectedImage.name}</strong>
-                    <span>{Math.ceil(selectedImage.size / 1024)} KB · image analysis</span>
-                  </div>
-                  <button type="button" onClick={() => setSelectedImage(null)}>
-                    Remove
-                  </button>
+          <div className="composer">
+            {selectedImage ? (
+              <div className="attachment-preview">
+                <img alt={selectedImage.name} src={getImageDataUrl(selectedImage)} />
+                <div>
+                  <strong>{selectedImage.name}</strong>
+                  <span>{Math.ceil(selectedImage.size / 1024)} KB · image analysis</span>
                 </div>
-              ) : null}
-              <Suggestion<SlashSuggestionInfo>
-                block
-                className="slash-command-suggestion"
-                items={getSlashSuggestionItems}
-                onSelect={handleSlashSelect}
-              >
-                {({ onKeyDown, onTrigger }) => (
-                  <Sender
-                    autoSize={{ minRows: 2, maxRows: 8 }}
-                    className="chat-sender"
-                    disabled={isStreaming}
-                    footer={
-                      <div className="composer-footer">
-                        <input
-                          ref={fileInputRef}
-                          accept={supportedImageMimeTypes.join(",")}
-                          onChange={handleImageChange}
-                          type="file"
-                        />
-                        <button
-                          disabled={isStreaming || !selectedModelSupportsImages}
-                          title={
-                            selectedModelSupportsImages
-                              ? "Upload image"
-                              : "Selected model does not support image input"
-                          }
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                        >
-                          Upload image
-                        </button>
-                      </div>
-                    }
-                    loading={isStreaming}
-                    onChange={(value) => {
-                      setInput(value);
-                      onTrigger(
-                        shouldShowSlashSuggestions(value)
-                          ? { query: value.slice(1) }
-                          : false
-                      );
-                    }}
-                    onKeyDown={(e) => {
-                      // Stop propagation to prevent parent BaseSelect
-                      // from intercepting space key (and others)
-                      e.stopPropagation();
-                      onKeyDown(e);
-                    }}
-                    onSubmit={submitMessage}
-                    placeholder="Ask the agent to reason, plan, or draft..."
-                    submitType="enter"
-                    value={input}
-                  />
-                )}
-              </Suggestion>
-            </div>
-          )}
+                <button type="button" onClick={() => setSelectedImage(null)}>
+                  Remove
+                </button>
+              </div>
+            ) : null}
+            <input
+              ref={fileInputRef}
+              className="composer-upload-input"
+              accept={supportedImageMimeTypes.join(",")}
+              onChange={handleImageChange}
+              type="file"
+            />
+            <Suggestion<SlashSuggestionInfo>
+              block
+              className="slash-command-suggestion"
+              items={getSlashSuggestionItems}
+              onSelect={handleSlashSelect}
+            >
+              {({ onKeyDown, onTrigger }) => (
+                <Sender
+                  autoSize={{ minRows: 2, maxRows: 8 }}
+                  className="chat-sender"
+                  disabled={
+                    isStreaming ||
+                    (isPiHistoryView && (piSessionLoading || Boolean(piSessionError)))
+                  }
+                  loading={isStreaming}
+                  onChange={(value) => {
+                    setInput(value);
+                    onTrigger(
+                      shouldShowSlashSuggestions(value)
+                        ? { query: value.slice(1) }
+                        : false
+                    );
+                  }}
+                  onKeyDown={(e) => {
+                    // Stop propagation to prevent parent BaseSelect
+                    // from intercepting space key (and others)
+                    e.stopPropagation();
+                    onKeyDown(e);
+                  }}
+                  onSubmit={submitMessage}
+                  placeholder={
+                    isPiHistoryView
+                      ? "Continue this Pi session..."
+                      : "Ask the agent to reason, plan, or draft..."
+                  }
+                  submitType="enter"
+                  value={input}
+                />
+              )}
+            </Suggestion>
+          </div>
         </section>
       </main>
       <Modal

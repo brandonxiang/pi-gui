@@ -2,33 +2,32 @@
   color-scheme: light;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* Brand */
   --primary: #0075de;
-  --primary-pressed: #005bab;
-  --link-blue: #0075de;
-  --brand-pink: #ff64c8;
-  --brand-teal: #2a9d99;
-  --brand-yellow: #f5d75e;
+  --primary-active: #005bab;
+  /* Surfaces */
   --canvas: #ffffff;
-  --surface: #f6f5f4;
-  --surface-soft: #fafaf9;
+  --canvas-soft: #f6f5f4;
   --hairline: #e6e6e6;
-  --hairline-soft: #ede9e4;
-  --hairline-strong: #c8c4be;
+  /* Text */
   --ink: #000000;
-  --charcoal: #31302e;
-  --slate: #615d59;
-  --steel: #a39e98;
-  --muted: #bbb8b1;
+  --ink-secondary: #31302e;
+  --ink-muted: #615d59;
+  --ink-faint: #a39e98;
+  /* Accent */
+  --accent-teal: #2a9d99;
+  /* Sidebar */
   --sidebar-bg: #f0f0f0;
   --sidebar-text: #1a1a1a;
   --sidebar-text-muted: #6e6e6e;
   --sidebar-hover: rgba(0, 0, 0, 0.04);
   --sidebar-active: rgba(0, 117, 222, 0.08);
   --sidebar-border: rgba(0, 0, 0, 0.08);
+  /* Card tints */
   --card-tint-mint: #d9f3e1;
-  --card-tint-lavender: #e6e0f5;
   --card-tint-sky: #dcecfa;
   --card-tint-yellow: #fef7d6;
+  /* Semantic */
   --semantic-error: #e03131;
   background: var(--canvas);
   color: var(--ink);
@@ -83,7 +82,7 @@ textarea {
 
 .eyebrow {
   margin: 0 0 8px;
-  color: var(--steel);
+  color: var(--ink-faint);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 1px;
@@ -111,7 +110,7 @@ h1 {
 
 h2 {
   margin-bottom: 0;
-  color: var(--charcoal);
+  color: var(--ink-secondary);
   font-size: 28px;
   font-weight: 600;
   line-height: 1.25;
@@ -131,7 +130,7 @@ h2 {
 .field {
   display: grid;
   gap: 8px;
-  color: var(--charcoal);
+  color: var(--ink-secondary);
   font-size: 14px;
   font-weight: 500;
 }
@@ -143,7 +142,7 @@ h2 {
 .field select,
 .field textarea {
   width: 100%;
-  border: 1px solid var(--hairline-strong);
+  border: 1px solid var(--hairline);
   border-radius: 8px;
   background: var(--canvas);
   color: var(--ink);
@@ -252,14 +251,14 @@ h2 {
   border-right: none;
   border-radius: 0 6px 6px 0;
   background: var(--canvas);
-  color: var(--slate);
+  color: var(--ink-muted);
   cursor: pointer;
   z-index: 10;
   transition: background 0.12s, color 0.12s;
 }
 
 .sidebar-expand-btn:hover {
-  background: var(--surface);
+  background: var(--canvas-soft);
   color: var(--primary);
 }
 
@@ -545,13 +544,13 @@ h2 {
 
 .pi-session-row-active {
   background: var(--sidebar-active);
-  border-left: 2px solid var(--link-blue);
+  border-left: 2px solid var(--primary);
 }
 
 .pi-project-group-drag-over {
   background: var(--sidebar-active);
   border-radius: 8px;
-  outline: 1px dashed var(--link-blue);
+  outline: 1px dashed var(--primary);
   outline-offset: -1px;
 }
 
@@ -611,7 +610,7 @@ h2 {
   height: 10px;
   margin-top: 7px;
   border-radius: 999px;
-  background: var(--brand-teal);
+  background: var(--accent-teal);
   box-shadow: 0 0 0 4px rgba(42, 157, 153, 0.18);
 }
 
@@ -641,7 +640,7 @@ h2 {
 .chat-header-title {
   font-size: 14px;
   font-weight: 600;
-  color: var(--charcoal);
+  color: var(--ink-secondary);
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -650,7 +649,7 @@ h2 {
 
 .chat-header-meta {
   overflow: hidden;
-  color: var(--steel);
+  color: var(--ink-faint);
   font-size: 12px;
   line-height: 1.4;
   text-overflow: ellipsis;
@@ -665,7 +664,7 @@ h2 {
   padding: 0 10px;
   border-radius: 999px;
   background: var(--card-tint-sky);
-  color: var(--charcoal);
+  color: var(--ink-secondary);
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
@@ -691,15 +690,15 @@ h2 {
   max-width: 560px;
   margin: auto;
   padding: 32px;
-  border: 1px dashed var(--hairline-strong);
+  border: 1px dashed var(--hairline);
   border-radius: 12px;
   background: var(--canvas);
-  color: var(--slate);
+  color: var(--ink-muted);
   text-align: center;
 }
 
 .empty-state h3 {
-  color: var(--charcoal);
+  color: var(--ink-secondary);
 }
 
 .chat-bubble-list {
@@ -736,8 +735,8 @@ h2 {
 }
 
 .chat-bubble-user .ant-bubble-content {
-  border-color: #d6b6f6;
-  background: var(--card-tint-lavender);
+  border-color: var(--card-tint-sky);
+  background: var(--card-tint-sky);
 }
 
 .message-content {
@@ -747,6 +746,93 @@ h2 {
 
 .message-content p {
   margin: 0;
+}
+
+/* ───── Markdown rendering in chat bubbles ───── */
+
+.chat-bubble .ant-bubble-content h1,
+.chat-bubble .ant-bubble-content h2,
+.chat-bubble .ant-bubble-content h3,
+.chat-bubble .ant-bubble-content h4 {
+  margin: 1em 0 0.5em;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink-secondary);
+}
+
+.chat-bubble .ant-bubble-content h1 { font-size: 1.4em; }
+.chat-bubble .ant-bubble-content h2 { font-size: 1.2em; }
+.chat-bubble .ant-bubble-content h3 { font-size: 1.1em; }
+
+.chat-bubble .ant-bubble-content p {
+  margin: 0 0 0.75em;
+  line-height: 1.65;
+}
+
+.chat-bubble .ant-bubble-content p:last-child {
+  margin-bottom: 0;
+}
+
+.chat-bubble .ant-bubble-content ul,
+.chat-bubble .ant-bubble-content ol {
+  margin: 0 0 0.75em;
+  padding-left: 1.5em;
+  line-height: 1.65;
+}
+
+.chat-bubble .ant-bubble-content li {
+  margin-bottom: 0.25em;
+}
+
+.chat-bubble .ant-bubble-content li:last-child {
+  margin-bottom: 0;
+}
+
+.chat-bubble .ant-bubble-content blockquote {
+  margin: 0 0 0.75em;
+  padding: 0.25em 1em;
+  border-left: 3px solid var(--hairline);
+  color: var(--ink-muted);
+}
+
+.chat-bubble .ant-bubble-content hr {
+  margin: 1em 0;
+  border: none;
+  border-top: 1px solid var(--hairline);
+}
+
+.chat-bubble .ant-bubble-content a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.chat-bubble .ant-bubble-content a:hover {
+  color: var(--primary-active);
+}
+
+.chat-bubble .ant-bubble-content strong {
+  font-weight: 600;
+}
+
+.chat-bubble .ant-bubble-content table {
+  width: 100%;
+  margin: 0 0 0.75em;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.chat-bubble .ant-bubble-content th,
+.chat-bubble .ant-bubble-content td {
+  padding: 8px 12px;
+  border: 1px solid var(--hairline);
+  text-align: left;
+  line-height: 1.5;
+}
+
+.chat-bubble .ant-bubble-content th {
+  background: var(--canvas-soft);
+  font-weight: 600;
 }
 
 .message-images {
@@ -766,14 +852,14 @@ h2 {
   display: block;
   width: 100%;
   max-height: 220px;
-  border: 1px solid var(--hairline-strong);
+  border: 1px solid var(--hairline);
   border-radius: 8px;
   object-fit: cover;
 }
 
 .message-image figcaption {
   overflow: hidden;
-  color: var(--slate);
+  color: var(--ink-muted);
   font-size: 12px;
   font-weight: 500;
   text-overflow: ellipsis;
@@ -786,14 +872,14 @@ h2 {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 10px;
-  color: var(--steel);
+  color: var(--ink-faint);
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
 }
 
 .message-meta small {
-  color: var(--steel);
+  color: var(--ink-faint);
   font-size: 11px;
   line-height: 1.4;
   text-transform: none;
@@ -832,7 +918,7 @@ h2 {
 .pi-tool-card {
   border: 1px solid var(--hairline);
   border-radius: 10px;
-  background: var(--surface-soft);
+  background: var(--canvas-soft);
   overflow: hidden;
 }
 
@@ -844,7 +930,7 @@ h2 {
   padding: 12px 14px;
   cursor: pointer;
   list-style: none;
-  color: var(--charcoal);
+  color: var(--ink-secondary);
   font-size: 14px;
   font-weight: 600;
 }
@@ -854,7 +940,7 @@ h2 {
 }
 
 .pi-tool-card summary small {
-  color: var(--steel);
+  color: var(--ink-faint);
   font-size: 12px;
   font-weight: 600;
 }
@@ -863,7 +949,7 @@ h2 {
   margin: 0;
   padding: 0 14px 14px;
   overflow-x: auto;
-  color: var(--charcoal);
+  color: var(--ink-secondary);
   font-size: 12px;
   line-height: 1.55;
   white-space: pre-wrap;
@@ -881,11 +967,11 @@ h2 {
   padding: 14px;
   border: 1px solid var(--hairline);
   border-radius: 10px;
-  background: var(--surface-soft);
+  background: var(--canvas-soft);
 }
 
 .pi-summary-card strong {
-  color: var(--charcoal);
+  color: var(--ink-secondary);
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -894,7 +980,7 @@ h2 {
 
 .pi-summary-card p {
   margin: 0;
-  color: var(--slate);
+  color: var(--ink-muted);
   font-size: 14px;
   line-height: 1.6;
 }
@@ -912,7 +998,7 @@ h2 {
 }
 
 .composer {
-  padding: 20px 32px 28px;
+  padding: 12px 20px;
   border-top: 1px solid var(--hairline);
   background: var(--canvas);
 }
@@ -922,8 +1008,8 @@ h2 {
   align-items: center;
   padding: 18px 32px 24px;
   border-top: 1px solid var(--hairline);
-  background: var(--surface-soft);
-  color: var(--steel);
+  background: var(--canvas-soft);
+  color: var(--ink-faint);
   font-size: 13px;
   font-weight: 600;
 }
@@ -967,17 +1053,16 @@ h2 {
 }
 
 .attachment-preview span {
-  color: var(--steel);
+  color: var(--ink-faint);
   font-size: 12px;
 }
 
-.attachment-preview button,
-.composer-footer button {
+.attachment-preview button {
   min-height: 32px;
-  border: 1px solid var(--hairline-strong);
+  border: 1px solid var(--hairline);
   border-radius: 8px;
   background: var(--canvas);
-  color: var(--charcoal);
+  color: var(--ink-secondary);
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
@@ -988,49 +1073,40 @@ h2 {
 }
 
 .attachment-preview button:hover,
-.composer-footer button:not(:disabled):hover {
+.attachment-preview button:not(:disabled):hover {
   border-color: var(--primary);
   color: var(--primary);
 }
 
-.composer-footer {
-  display: flex;
-  justify-content: flex-start;
-  padding-top: 8px;
-}
-
-.composer-footer input {
+.composer-upload-input {
   display: none;
 }
 
-.composer-footer button {
-  padding: 0 10px;
-}
-
-.composer-footer button:disabled {
-  cursor: not-allowed;
-  opacity: 0.52;
-}
-
 .chat-sender {
-  border: 1px solid var(--hairline-strong);
+  border: 1px solid var(--hairline);
   border-radius: 8px;
-  background: var(--surface-soft);
+  background: var(--canvas-soft);
 }
 
 .chat-sender .ant-sender-content {
   min-height: 64px;
-  display: flex;
-  align-items: flex-end;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 10px;
+  padding: 10px;
 }
 
 .chat-sender .ant-sender-actions-list {
-  align-self: flex-end;
-  padding-bottom: 4px;
+  align-self: end;
+  justify-self: end;
+  margin: 0;
+  padding: 0 0 2px;
 }
 
 .chat-sender .ant-sender-input {
-  font-size: 16px;
+  min-width: 0;
+  font-size: 14px;
   line-height: 1.5;
 }
 
@@ -1039,7 +1115,7 @@ h2 {
 }
 
 .chat-sender .ant-sender-actions-btn .ant-btn-primary:not(:disabled):hover {
-  background: var(--primary-pressed);
+  background: var(--primary-active);
 }
 
 .slash-command-suggestion {
@@ -1059,13 +1135,13 @@ h2 {
 }
 
 .slash-command-option small {
-  color: var(--steel);
+  color: var(--ink-faint);
   font-size: 12px;
   line-height: 1.35;
 }
 
 .slash-command-source {
-  color: var(--steel);
+  color: var(--ink-faint);
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
