@@ -4,9 +4,6 @@
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --primary: #0075de;
   --primary-pressed: #005bab;
-  --brand-navy: #0a1530;
-  --brand-navy-deep: #070f24;
-  --brand-navy-mid: #1a2a52;
   --link-blue: #0075de;
   --brand-pink: #ff64c8;
   --brand-teal: #2a9d99;
@@ -22,14 +19,18 @@
   --slate: #615d59;
   --steel: #a39e98;
   --muted: #bbb8b1;
-  --on-dark: #ffffff;
-  --on-dark-muted: rgba(255, 255, 255, 0.55);
+  --sidebar-bg: #f0f0f0;
+  --sidebar-text: #1a1a1a;
+  --sidebar-text-muted: #6e6e6e;
+  --sidebar-hover: rgba(0, 0, 0, 0.04);
+  --sidebar-active: rgba(0, 117, 222, 0.08);
+  --sidebar-border: rgba(0, 0, 0, 0.08);
   --card-tint-mint: #d9f3e1;
   --card-tint-lavender: #e6e0f5;
   --card-tint-sky: #dcecfa;
   --card-tint-yellow: #fef7d6;
   --semantic-error: #e03131;
-  background: var(--surface);
+  background: var(--canvas);
   color: var(--ink);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -55,7 +56,7 @@ textarea {
   display: grid;
   grid-template-columns: 372px minmax(0, 1fr);
   min-height: 100vh;
-  background: var(--surface);
+  background: var(--canvas);
   transition: grid-template-columns 0.2s;
 }
 
@@ -71,9 +72,9 @@ textarea {
   padding: 16px;
   height: 100vh;
   overflow: hidden;
-  border-right: 1px solid var(--brand-navy-mid);
-  background: var(--brand-navy);
-  color: var(--on-dark);
+  border-right: 1px solid var(--sidebar-border);
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text);
 }
 
 .sidebar > * {
@@ -90,7 +91,7 @@ textarea {
 }
 
 .sidebar .eyebrow {
-  color: var(--on-dark-muted);
+  color: var(--sidebar-text-muted);
 }
 
 h1,
@@ -118,7 +119,7 @@ h2 {
 
 .sidebar-copy {
   max-width: 300px;
-  color: var(--on-dark-muted);
+  color: var(--sidebar-text-muted);
   font-size: 16px;
   line-height: 1.55;
 }
@@ -136,7 +137,7 @@ h2 {
 }
 
 .sidebar .field {
-  color: var(--on-dark);
+  color: var(--sidebar-text);
 }
 
 .field select,
@@ -151,9 +152,9 @@ h2 {
 
 .sidebar .field select,
 .sidebar .field textarea {
-  border-color: rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--on-dark);
+  border-color: var(--sidebar-border);
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--sidebar-text);
 }
 
 .sidebar .field select option {
@@ -187,17 +188,32 @@ h2 {
 
 .secondary-button {
   min-height: 42px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--on-dark);
+  border: 1px solid var(--sidebar-border);
+  background: transparent;
+  color: var(--sidebar-text);
 }
 
 .secondary-button:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--sidebar-hover);
+}
+
+.sidebar-brand-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-right: auto;
 }
 
 .sidebar-actions {
   display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.sidebar-top-row {
+  display: flex;
+  align-items: center;
   gap: 8px;
 }
 
@@ -208,18 +224,18 @@ h2 {
   width: 28px;
   height: 28px;
   margin-top: auto;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--sidebar-border);
   border-radius: 6px;
   background: transparent;
-  color: var(--on-dark-muted);
+  color: var(--sidebar-text-muted);
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
   align-self: center;
 }
 
 .sidebar-collapse-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--on-dark);
+  background: var(--sidebar-hover);
+  color: var(--sidebar-text);
 }
 
 .sidebar-expand-btn {
@@ -253,17 +269,17 @@ h2 {
   justify-content: center;
   width: 36px;
   height: 36px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid var(--sidebar-border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--on-dark-muted);
+  background: transparent;
+  color: var(--sidebar-text-muted);
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
 
 .icon-button:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: var(--on-dark);
+  background: var(--sidebar-hover);
+  color: var(--sidebar-text);
 }
 
 .icon-button:disabled {
@@ -286,14 +302,14 @@ h2 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: var(--on-dark-muted);
+  color: var(--sidebar-text-muted);
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
 }
 
 .session-section-heading small {
-  color: var(--on-dark-muted);
+  color: var(--sidebar-text-muted);
   font-size: 12px;
 }
 
@@ -313,18 +329,18 @@ h2 {
   display: grid;
   gap: 8px;
   padding: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--sidebar-border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--canvas);
 }
 
 .session-row-active {
-  border-color: rgba(255, 255, 255, 0.34);
-  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--primary);
+  background: var(--sidebar-active);
 }
 
 .session-row-archived {
-  opacity: 0.78;
+  opacity: 0.7;
 }
 
 .session-select {
@@ -333,7 +349,7 @@ h2 {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--on-dark);
+  color: var(--sidebar-text);
   cursor: pointer;
   text-align: left;
 }
@@ -351,7 +367,7 @@ h2 {
 }
 
 .session-select small {
-  color: var(--on-dark-muted);
+  color: var(--sidebar-text-muted);
   font-size: 12px;
 }
 
@@ -363,10 +379,10 @@ h2 {
 .session-row-actions button {
   min-height: 28px;
   padding: 0 9px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid var(--sidebar-border);
   border-radius: 8px;
   background: transparent;
-  color: var(--on-dark-muted);
+  color: var(--sidebar-text-muted);
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
@@ -378,31 +394,22 @@ h2 {
 }
 
 .session-row-actions button:not(:disabled):hover {
-  border-color: rgba(255, 255, 255, 0.34);
-  color: var(--on-dark);
+  background: var(--sidebar-hover);
+  color: var(--sidebar-text);
 }
 
 .session-rename-input {
   width: 100%;
   min-height: 34px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
+  border: 1px solid var(--sidebar-border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--on-dark);
+  background: var(--canvas);
+  color: var(--sidebar-text);
   outline: none;
   padding: 0 10px;
 }
 
-/* ───── Pi Session Section (Notion-inspired) ─────
- *
- * Applies the DESIGN.md language within the dark navy sidebar:
- *   - Typography: body-sm (15px/400) for content, caption (14px/400) for meta,
- *                 eyebrow (12px/600/+0.125px tracking) for section headings
- *   - Spacing: Notion's base rhythm (4/8/12/16/24)
- *   - Radius: md (8px) for headers, sm (5px) for rows, full for badges
- *   - Accent: --link-blue (#0075de) as the single structural accent in active states
- *   - Elevation: hairline borders + micro-opacity shifts, no heavy shadows
- */
+/* ───── Pi Session Section ───── */
 
 .pi-sessions-section {
   display: flex;
@@ -414,6 +421,7 @@ h2 {
 
 .pi-sessions-list {
   display: grid;
+  align-content: start;
   gap: 4px;
   overflow-y: auto;
   padding-right: 4px;
@@ -440,14 +448,14 @@ h2 {
   min-width: 0;
   min-height: 32px;
   padding: 6px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;               /* rounded.md = 8px */
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--on-dark);
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+  background: var(--canvas);
+  color: var(--sidebar-text);
   cursor: pointer;
   font-size: 14px;
-  font-weight: 600;                  /* title-weight, not chunky 650 */
-  letter-spacing: -0.125px;          /* title tracking */
+  font-weight: 600;
+  letter-spacing: -0.125px;
   text-align: left;
   transition: background 0.12s;
 }
@@ -458,7 +466,7 @@ h2 {
 }
 
 .pi-project-header:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--sidebar-hover);
 }
 
 .pi-new-session-btn {
@@ -468,18 +476,18 @@ h2 {
   flex-shrink: 0;
   width: 32px;
   height: 32px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--sidebar-border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--on-dark-muted);
+  background: transparent;
+  color: var(--sidebar-text-muted);
   cursor: pointer;
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 
 .pi-new-session-btn:hover:not(:disabled) {
-  background: rgba(0, 117, 222, 0.15);
-  border-color: rgba(0, 117, 222, 0.35);
-  color: #4da8f0;
+  background: var(--sidebar-hover);
+  border-color: var(--sidebar-border);
+  color: var(--sidebar-text);
 }
 
 .pi-new-session-btn:disabled {
@@ -498,12 +506,12 @@ h2 {
   flex-shrink: 0;
   min-width: 24px;
   padding: 0 8px;
-  border-radius: 9999px;            /* rounded.full */
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--on-dark-muted);
-  font-size: 12px;                   /* eyebrow size */
-  font-weight: 600;                  /* eyebrow weight */
-  letter-spacing: 0.125px;           /* eyebrow tracking */
+  border-radius: 9999px;
+  background: var(--sidebar-hover);
+  color: var(--sidebar-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.125px;
   line-height: 22px;
   text-align: center;
 }
@@ -519,8 +527,7 @@ h2 {
   width: 100%;
   padding: 8px 10px;
   border: 0;
-  border: none;
-  border-radius: 5px;               /* rounded.sm = 5px */
+  border-radius: 5px;
   background: transparent;
   cursor: pointer;
   text-align: left;
@@ -528,7 +535,7 @@ h2 {
 }
 
 .pi-session-row:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--sidebar-hover);
 }
 
 .pi-session-row:disabled {
@@ -536,11 +543,16 @@ h2 {
   opacity: 0.46;
 }
 
-/* Active session gets the single blue accent — Notion's principle:
- * only one thing on the page gets painted in --link-blue. */
 .pi-session-row-active {
-  background: rgba(0, 117, 222, 0.1);   /* --link-blue at 10% */
+  background: var(--sidebar-active);
   border-left: 2px solid var(--link-blue);
+}
+
+.pi-project-group-drag-over {
+  background: var(--sidebar-active);
+  border-radius: 8px;
+  outline: 1px dashed var(--link-blue);
+  outline-offset: -1px;
 }
 
 .pi-session-info {
@@ -551,22 +563,21 @@ h2 {
 
 .pi-session-first-msg {
   overflow: hidden;
-  color: var(--on-dark);
-  font-size: 14px;                   /* caption size on dark bg */
+  color: var(--sidebar-text);
+  font-size: 14px;
   font-weight: 400;
   line-height: 1.45;
   text-overflow: ellipsis;
   white-space: nowrap;
-  opacity: 0.88;
 }
 
 .pi-session-meta {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: rgba(255, 255, 255, 0.45);  /* softer than --on-dark-muted */
-  font-size: 12px;                   /* eyebrow size */
-  font-weight: 400;                  /* normal weight for readable meta */
+  color: var(--sidebar-text-muted);
+  font-size: 12px;
+  font-weight: 400;
   letter-spacing: 0;
 }
 
@@ -574,7 +585,7 @@ h2 {
 .pi-sessions-error,
 .pi-sessions-empty {
   padding: 8px 10px;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--sidebar-text-muted);
   font-size: 14px;
 }
 
@@ -584,10 +595,10 @@ h2 {
   align-items: flex-start;
   margin-top: auto;
   padding: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid var(--sidebar-border);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.07);
-  color: var(--on-dark-muted);
+  background: var(--canvas);
+  color: var(--sidebar-text-muted);
   line-height: 1.5;
 }
 
@@ -618,8 +629,7 @@ h2 {
   gap: 16px;
   padding: 10px 32px;
   border-bottom: 1px solid var(--hairline);
-  background: rgba(250, 250, 249, 0.86);
-  backdrop-filter: blur(14px);
+  background: var(--canvas);
 }
 
 .chat-header-copy {
@@ -655,7 +665,7 @@ h2 {
   padding: 0 10px;
   border-radius: 999px;
   background: var(--card-tint-sky);
-  color: var(--brand-navy);
+  color: var(--charcoal);
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
@@ -666,9 +676,7 @@ h2 {
 .messages {
   min-height: 0;
   overflow: hidden;
-  background:
-    linear-gradient(180deg, rgba(250, 250, 249, 0.92), rgba(246, 245, 244, 0.96)),
-    var(--surface);
+  background: var(--canvas);
 }
 
 .messages-empty {
@@ -906,7 +914,7 @@ h2 {
 .composer {
   padding: 20px 32px 28px;
   border-top: 1px solid var(--hairline);
-  background: var(--surface-soft);
+  background: var(--canvas);
 }
 
 .pi-history-footer {
@@ -1005,9 +1013,9 @@ h2 {
 }
 
 .chat-sender {
-  border-color: var(--hairline-strong);
+  border: 1px solid var(--hairline-strong);
   border-radius: 8px;
-  background: var(--canvas);
+  background: var(--surface-soft);
 }
 
 .chat-sender .ant-sender-content {
@@ -1076,7 +1084,7 @@ h2 {
 
   .sidebar {
     border-right: 0;
-    border-bottom: 1px solid var(--brand-navy-mid);
+    border-bottom: 1px solid var(--sidebar-border);
   }
 
   .session-list {

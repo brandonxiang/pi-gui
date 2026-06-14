@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PiSessionProject } from "./types";
 
 function relativeTime(isoString: string): string {
@@ -22,6 +22,42 @@ interface PiSessionSectionProps {
   onSelectSession: (sessionId: string) => void;
 }
 
+const ORDER_STORAGE_KEY = "my-pi-pi-project-order";
+
+function readStoredProjectOrder(): string[] {
+  try {
+    const raw = localStorage.getItem(ORDER_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredProjectOrder(order: string[]) {
+  localStorage.setItem(ORDER_STORAGE_KEY, JSON.stringify(order));
+}
+
+function sortProjectsByOrder(
+  projects: PiSessionProject[],
+  order: string[]
+): PiSessionProject[] {
+  if (order.length === 0) return projects;
+
+  const projectMap = new Map(projects.map((p) => [p.path, p]));
+  const sorted: PiSessionProject[] = [];
+  const unsorted: PiSessionProject[] = [];
+
+  for (const path of order) {
+    const p = projectMap.get(path);
+    if (p) sorted.push(p);
+  }
+  for (const p of projects) {
+    if (!sorted.find((s) => s.path === p.path)) unsorted.push(p);
+  }
+
+  return [...sorted, ...unsorted];
+}
+
 export function PiSessionSection({
   isStreaming,
   selectedSessionId,
@@ -31,6 +67,8 @@ export function PiSessionSection({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [dragOverProjectPath, setDragOverProjectPath] = useState<string | null>(null);
+  const dragProjectPathRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,9 +83,12 @@ export function PiSessionSection({
         }
         const body = (await response.json()) as { projects: PiSessionProject[] };
         if (cancelled) return;
-        setProjects(body.projects);
-        // Auto-expand all projects on load
-        setExpandedProjects(new Set(body.projects.map((p) => p.path)));
+
+        // Apply persisted project order
+        const order = readStoredProjectOrder();
+        const orderedProjects = sortProjectsByOrder(body.projects, order);
+        setProjects(orderedProjects);
+        // All projects collapsed by default
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load Pi sessions");
@@ -88,17 +129,64 @@ export function PiSessionSection({
         throw new Error(err?.error || `Request failed with ${response.status}`);
       }
       const body = (await response.json()) as { projects: PiSessionProject[] };
-      setProjects(body.projects);
-      // Expand all projects
-      setExpandedProjects(new Set(body.projects.map((p) => p.path)));
+      const order = readStoredProjectOrder();
+      const orderedProjects = sortProjectsByOrder(body.projects, order);
+      setProjects(orderedProjects);
+      // Keep collapsed by default
       // Select the newly created session (first session of the target project)
-      const targetProject = body.projects.find((p) => p.path === projectPath);
+      const targetProject = orderedProjects.find((p) => p.path === projectPath);
       if (targetProject && targetProject.sessions.length > 0) {
         onSelectSession(targetProject.sessions[0].id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create session");
     }
+  }
+
+  /* ───── Project-level drag & drop ───── */
+
+  function handleProjectDragStart(projectPath: string) {
+    dragProjectPathRef.current = projectPath;
+  }
+
+  function handleProjectDragOver(event: React.DragEvent, projectPath: string) {
+    event.preventDefault();
+    if (dragProjectPathRef.current && dragProjectPathRef.current !== projectPath) {
+      setDragOverProjectPath(projectPath);
+    }
+  }
+
+  function handleProjectDragLeave() {
+    setDragOverProjectPath(null);
+  }
+
+  function handleProjectDrop(targetPath: string) {
+    const sourcePath = dragProjectPathRef.current;
+    dragProjectPathRef.current = null;
+    setDragOverProjectPath(null);
+
+    if (!sourcePath || sourcePath === targetPath) return;
+
+    setProjects((prev) => {
+      const paths = prev.map((p) => p.path);
+      const sourceIdx = paths.indexOf(sourcePath);
+      const targetIdx = paths.indexOf(targetPath);
+      if (sourceIdx === -1 || targetIdx === -1) return prev;
+
+      const reordered = [...prev];
+      const [moved] = reordered.splice(sourceIdx, 1);
+      reordered.splice(targetIdx, 0, moved);
+
+      // Persist
+      writeStoredProjectOrder(reordered.map((p) => p.path));
+
+      return reordered;
+    });
+  }
+
+  function handleProjectDragEnd() {
+    dragProjectPathRef.current = null;
+    setDragOverProjectPath(null);
   }
 
   if (loading) {
@@ -139,9 +227,22 @@ export function PiSessionSection({
       <div className="pi-sessions-list">
         {projects.map((project) => {
           const isExpanded = expandedProjects.has(project.path);
+          const isDragOver = dragOverProjectPath === project.path;
 
           return (
-            <div className="pi-project-group" key={project.path}>
+            <div
+              className={
+                "pi-project-group" +
+                (isDragOver ? " pi-project-group-drag-over" : "")
+              }
+              key={project.path}
+              draggable={!isStreaming}
+              onDragStart={() => handleProjectDragStart(project.path)}
+              onDragOver={(e) => handleProjectDragOver(e, project.path)}
+              onDragLeave={handleProjectDragLeave}
+              onDrop={() => handleProjectDrop(project.path)}
+              onDragEnd={handleProjectDragEnd}
+            >
               <div className="pi-project-header-row">
                 <button
                   className="pi-project-header"
