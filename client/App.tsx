@@ -396,6 +396,7 @@ export default function App() {
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [draftAssistant, setDraftAssistant] = useState("");
+const [draftThinking, setDraftThinking] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -460,18 +461,32 @@ export default function App() {
   }, [draftToolMessages]);
 
   const streamingBubbleItem = useMemo<BubbleItemType | null>(() => {
-    if (!draftAssistant && draftToolMessages.size === 0) return null;
-    if (!draftAssistant) return null;
+    if (!draftAssistant && !draftThinking && draftToolMessages.size === 0) return null;
+    if (!draftAssistant && !draftThinking) return null;
+
+    const content = draftThinking ? (
+      <div>
+        {draftThinking ? (
+          <details className="thinking-block" open>
+            <summary>Thinking</summary>
+            <div className="thinking-content">{draftThinking}</div>
+          </details>
+        ) : null}
+        {draftAssistant ? <MarkdownContent content={draftAssistant} /> : null}
+      </div>
+    ) : (
+      draftAssistant
+    );
 
     return {
       key: "assistant-streaming",
       role: "assistant",
-      content: draftAssistant,
+      content,
       streaming: isStreaming,
-      status: "updating",
+      status: "updating" as const,
       header: <MessageHeader label="My Pi" meta="streaming" />
     };
-  }, [draftAssistant, draftToolMessages, isStreaming]);
+  }, [draftAssistant, draftThinking, draftToolMessages, isStreaming]);
 
   const localBubbleItems = useMemo<BubbleItemType[]>(() => {
     const storedItems = messages.map(createBubbleItem);
@@ -577,6 +592,7 @@ export default function App() {
     setInput("");
     setSelectedImage(null);
     setDraftAssistant("");
+    setDraftThinking("");
     setError(null);
     setPiPendingMessages([]);
   }
@@ -603,6 +619,7 @@ export default function App() {
       setActiveSessionId(nextActive.id);
       setActivePanelView({ kind: "local" });
       setDraftAssistant("");
+      setDraftThinking("");
       setInput("");
       setSelectedImage(null);
       setPiPendingMessages([]);
@@ -624,6 +641,7 @@ export default function App() {
     setPiSessionError(null);
     setError(null);
     setDraftAssistant("");
+    setDraftThinking("");
     setPiPendingMessages([]);
   }
 
@@ -638,6 +656,7 @@ export default function App() {
     setPiSessionError(null);
     setError(null);
     setDraftAssistant("");
+    setDraftThinking("");
     setPiPendingMessages([]);
 
     try {
@@ -705,6 +724,7 @@ export default function App() {
     setInput("");
     setSelectedImage(null);
     setDraftAssistant("");
+    setDraftThinking("");
     setDraftToolMessages(new Map());
     setError(null);
     setIsStreaming(true);
@@ -742,6 +762,10 @@ export default function App() {
       await readEventStream(response, (streamEvent) => {
         if (streamEvent.type === "delta") {
           setDraftAssistant((current) => current + streamEvent.delta);
+        }
+
+        if (streamEvent.type === "thinking") {
+          setDraftThinking((current) => current + streamEvent.delta);
         }
 
         if (streamEvent.type === "tool_start") {
@@ -869,6 +893,7 @@ export default function App() {
       }
     } finally {
       setDraftAssistant("");
+      setDraftThinking("");
       setIsStreaming(false);
     }
   }

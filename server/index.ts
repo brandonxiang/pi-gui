@@ -20,6 +20,7 @@ import {
   type ImageContent
 } from "./chat-validation.js";
 import {
+  findSessionById,
   groupSessionsByProject,
   loadPiSessionContextById,
   loadPiSessionDetailById
@@ -258,12 +259,10 @@ async function getOrCreateSession(
     authStorage,
     modelRegistry,
     model,
-    thinkingLevel: "off",
-    noTools: "all",
     resourceLoader: buildResourceLoader(systemPrompt),
-    sessionManager: SessionManager.inMemory(process.cwd()),
+    sessionManager: SessionManager.create(process.cwd()),
     settingsManager: SettingsManager.inMemory({
-      compaction: { enabled: false },
+      compaction: { enabled: true },
       retry: { enabled: true, maxRetries: 1 }
     })
   });
@@ -307,10 +306,9 @@ async function createPersistedPiSession(
     authStorage,
     modelRegistry,
     model,
-    thinkingLevel: "off",
     sessionManager: context.sessionManager,
     settingsManager: SettingsManager.inMemory({
-      compaction: { enabled: false },
+      compaction: { enabled: true },
       retry: { enabled: true, maxRetries: 1 }
     })
   });
