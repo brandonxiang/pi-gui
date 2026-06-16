@@ -6,6 +6,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 
 export interface PiSessionSummary {
   id: string;
+  name?: string;
   firstMessage: string;
   messageCount: number;
   created: string;
@@ -469,6 +470,7 @@ export function groupSessionsByProject(rawSessions: RawSessionInfo[]): PiSession
       path: group.path,
       sessions: group.sessions.map((s) => ({
         id: s.id,
+        name: s.name,
         firstMessage: truncateFirstMessage(s.firstMessage),
         messageCount: s.messageCount,
         created: toIsoString(s.created),

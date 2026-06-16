@@ -1,5 +1,5 @@
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Modal } from "antd";
+import { Dropdown, Input, Modal } from "antd";
 import Bubble, { type BubbleItemType, type BubbleListProps } from "@ant-design/x/es/bubble";
 import Sender from "@ant-design/x/es/sender";
 import Suggestion, { type SuggestionItem } from "@ant-design/x/es/suggestion";
@@ -19,6 +19,7 @@ import { PiSessionSection } from "./PiSessionSection";
 const STORAGE_KEY = "my-pi-chat-session";
 const SESSIONS_STORAGE_KEY = "my-pi-chat-sessions";
 const ACTIVE_SESSION_KEY = "my-pi-active-session-id";
+const ARCHIVED_PI_SESSIONS_KEY = "my-pi-archived-pi-sessions";
 const supportedImageMimeTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 const maxImageBytes = 5 * 1024 * 1024;
 
@@ -393,13 +394,22 @@ export default function App() {
   });
   const [modelOptions, setModelOptions] = useState<ModelOption[]>(modelPresets);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
+  const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
+  const [archivedPiSessionIds, setArchivedPiSessionIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(ARCHIVED_PI_SESSIONS_KEY);
+      return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
   const [draftAssistant, setDraftAssistant] = useState("");
 const [draftThinking, setDraftThinking] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [piRefreshKey, setPiRefreshKey] = useState(0);
   const [activePanelView, setActivePanelView] = useState<ActivePanelView>({ kind: "local" });
   const [piSessionDetail, setPiSessionDetail] = useState<PiSessionDetailResponse | null>(null);
   const [piPendingMessages, setPiPendingMessages] = useState<PiHistoryMessage[]>([]);
@@ -597,19 +607,60 @@ const [draftThinking, setDraftThinking] = useState("");
     setPiPendingMessages([]);
   }
 
-  function beginRenameSession(session: ChatSession) {
-    setRenameSessionId(session.id);
-    setRenameDraft(session.title);
+  function openRenameModal(sessionId: string) {
+    const localSession = sessions.find((s) => s.id === sessionId);
+    const piName =
+      piSessionDetail && piSessionDetail.session.id === sessionId
+        ? piSessionDetail.session.name
+        : undefined;
+    setRenameTargetId(sessionId);
+    setRenameDraft(localSession?.title || piName || "");
   }
 
-  function saveSessionName(sessionId: string) {
-    const nextTitle = renameDraft.trim() || "Untitled session";
-    updateSession(sessionId, (session) => ({ ...session, title: nextTitle }));
-    setRenameSessionId(null);
+  function closeRenameModal() {
+    setRenameTargetId(null);
     setRenameDraft("");
   }
 
-  function archiveSession(sessionId: string) {
+  async function confirmRename() {
+    const targetId = renameTargetId;
+    if (!targetId) return;
+
+    const newName = renameDraft.trim() || "Untitled session";
+
+    // Update local session title immediately.
+    updateSession(targetId, (session) => ({ ...session, title: newName }));
+
+    // Update Pi session header immediately if this is the active Pi session.
+    if (
+      piSessionDetail &&
+      activePanelView.kind === "pi" &&
+      activePanelView.sessionId === targetId
+    ) {
+      setPiSessionDetail({
+        ...piSessionDetail,
+        session: { ...piSessionDetail.session, name: newName }
+      });
+    }
+
+    // Persist to disk via API.
+    try {
+      await fetch(`/api/sessions/${encodeURIComponent(targetId)}/name`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName })
+      });
+    } catch {
+      // Ignore API errors for local-only sessions.
+    }
+
+    // Refresh Pi session sidebar after rename.
+    setPiRefreshKey((k) => k + 1);
+
+    closeRenameModal();
+  }
+
+  function archiveLocalSession(sessionId: string) {
     updateSession(sessionId, (session) => ({ ...session, archived: true }));
     if (activePanelView.kind === "local" && activeSessionId === sessionId) {
       const nextActive = visibleSessions.find((session) => session.id !== sessionId) || createSession();
@@ -626,11 +677,29 @@ const [draftThinking, setDraftThinking] = useState("");
     }
   }
 
-  function restoreSession(sessionId: string) {
+  function restoreLocalSession(sessionId: string) {
     updateSession(sessionId, (session) => ({ ...session, archived: false }));
     setActiveSessionId(sessionId);
     setActivePanelView({ kind: "local" });
     setPiPendingMessages([]);
+  }
+
+  function archivePiSession(sessionId: string) {
+    setArchivedPiSessionIds((prev) => {
+      const next = new Set(prev);
+      next.add(sessionId);
+      localStorage.setItem(ARCHIVED_PI_SESSIONS_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  }
+
+  function restorePiSession(sessionId: string) {
+    setArchivedPiSessionIds((prev) => {
+      const next = new Set(prev);
+      next.delete(sessionId);
+      localStorage.setItem(ARCHIVED_PI_SESSIONS_KEY, JSON.stringify([...next]));
+      return next;
+    });
   }
 
   function selectLocalSession(sessionId: string) {
@@ -982,49 +1051,34 @@ const [draftThinking, setDraftThinking] = useState("");
                   }
                   key={session.id}
                 >
-                  {renameSessionId === session.id ? (
-                    <input
-                      autoFocus
-                      className="session-rename-input"
-                      value={renameDraft}
-                      onBlur={() => saveSessionName(session.id)}
-                      onChange={(event) => setRenameDraft(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") saveSessionName(session.id);
-                        if (event.key === "Escape") {
-                          setRenameSessionId(null);
-                          setRenameDraft("");
-                        }
-                      }}
-                    />
-                  ) : (
-                    <button
-                      className="session-select"
-                      disabled={isStreaming}
-                      type="button"
-                      onClick={() => selectLocalSession(session.id)}
-                    >
-                      <span>{session.title}</span>
-                      <small>{session.messages.length} messages</small>
-                    </button>
-                  )}
+                  <button
+                    className="session-select"
+                    disabled={isStreaming}
+                    type="button"
+                    onClick={() => selectLocalSession(session.id)}
+                  >
+                    <span>{session.title}</span>
+                    <small>{session.messages.length} messages</small>
+                  </button>
 
-                  <div className="session-row-actions">
-                    <button
-                      disabled={isStreaming}
-                      type="button"
-                      onClick={() => beginRenameSession(session)}
+                  <span className="session-menu-trigger" onClick={(e) => e.stopPropagation()}>
+                    <Dropdown
+                      menu={{
+                        items: [
+                          { key: "rename", label: "Rename", onClick: () => openRenameModal(session.id) },
+                          { key: "delete", label: "Delete", onClick: () => archiveLocalSession(session.id) }
+                        ]
+                      }}
+                      placement="bottomRight"
+                      trigger={["click"]}
                     >
-                      Rename
-                    </button>
-                    <button
-                      disabled={isStreaming}
-                      type="button"
-                      onClick={() => archiveSession(session.id)}
-                    >
-                      Archive
-                    </button>
-                  </div>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <circle cx="12" cy="5" r="2"/>
+                        <circle cx="12" cy="12" r="2"/>
+                        <circle cx="12" cy="19" r="2"/>
+                      </svg>
+                    </Dropdown>
+                  </span>
                 </div>
               ))}
             </div>
@@ -1041,7 +1095,7 @@ const [draftThinking, setDraftThinking] = useState("");
                       className="session-select"
                       disabled={isStreaming}
                       type="button"
-                      onClick={() => restoreSession(session.id)}
+                      onClick={() => restoreLocalSession(session.id)}
                     >
                       <span>{session.title}</span>
                       <small>Archived · restore</small>
@@ -1058,6 +1112,11 @@ const [draftThinking, setDraftThinking] = useState("");
             onSelectSession={(sessionId) => {
               void selectPiSession(sessionId);
             }}
+            onRename={openRenameModal}
+            archivedSessionIds={archivedPiSessionIds}
+            onArchive={archivePiSession}
+            onRestore={restorePiSession}
+            refreshKey={piRefreshKey}
           />
 
           <button
@@ -1251,6 +1310,27 @@ const [draftThinking, setDraftThinking] = useState("");
             />
           </label>
         </div>
+      </Modal>
+
+      <Modal
+        centered
+        open={renameTargetId !== null}
+        title="Rename session"
+        okText="Rename"
+        cancelText="Cancel"
+        onOk={() => { void confirmRename(); }}
+        onCancel={closeRenameModal}
+      >
+        <Input
+          autoFocus
+          value={renameDraft}
+          placeholder="Session name"
+          onChange={(event) => setRenameDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void confirmRename();
+            if (event.key === "Escape") closeRenameModal();
+          }}
+        />
       </Modal>
     </XProvider>
   );

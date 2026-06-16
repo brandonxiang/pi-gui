@@ -325,7 +325,8 @@ h2 {
 }
 
 .session-row {
-  display: grid;
+  display: flex;
+  align-items: center;
   gap: 8px;
   padding: 10px;
   border: 1px solid var(--sidebar-border);
@@ -344,6 +345,7 @@ h2 {
 
 .session-select {
   display: grid;
+  flex: 1;
   min-width: 0;
   padding: 0;
   border: 0;
@@ -409,6 +411,42 @@ h2 {
 }
 
 /* ───── Pi Session Section ───── */
+
+.session-menu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  border-radius: 6px;
+  color: var(--sidebar-text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s;
+}
+
+.session-row:hover .session-menu-trigger,
+.session-row-active .session-menu-trigger {
+  opacity: 1;
+}
+
+.session-menu-trigger:hover {
+  background: var(--sidebar-hover);
+  color: var(--sidebar-text);
+}
+
+.pi-session-row .pi-session-menu-trigger {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.pi-session-row-archived {
+  opacity: 0.55;
+}
 
 .pi-sessions-section {
   display: flex;
@@ -522,6 +560,7 @@ h2 {
 }
 
 .pi-session-row {
+  position: relative;
   display: grid;
   width: 100%;
   padding: 8px 10px;

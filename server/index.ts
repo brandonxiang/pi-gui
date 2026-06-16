@@ -399,6 +399,45 @@ async function buildServer() {
     }
   });
 
+  server.put("/api/sessions/:sessionId/name", async (request, reply) => {
+    const { sessionId } = request.params as { sessionId?: string };
+    const { name } = request.body as { name?: string };
+
+    if (!sessionId?.trim()) {
+      reply.code(400);
+      return { error: "sessionId is required" };
+    }
+    if (!name?.trim()) {
+      reply.code(400);
+      return { error: "name is required" };
+    }
+
+    // Check local sessions (cached in sessions Map).
+    const localSession = sessions.get(sessionId);
+    if (localSession) {
+      localSession.session.sessionManager.appendSessionInfo(name.trim());
+      return { ok: true };
+    }
+
+    // Check persistent Pi sessions.
+    try {
+      const allSessions = await SessionManager.listAll();
+      const match = findSessionById(allSessions, sessionId);
+      if (!match) {
+        reply.code(404);
+        return { error: "Session not found" };
+      }
+      const sm = SessionManager.open(match.path);
+      sm.appendSessionInfo(name.trim());
+      return { ok: true };
+    } catch (error) {
+      reply.code(500);
+      return {
+        error: error instanceof Error ? error.message : "Failed to rename session"
+      };
+    }
+  });
+
   server.get("/api/models", async (_request, reply) => {
     try {
       const { modelRegistry } = await createLocalModelRegistry();

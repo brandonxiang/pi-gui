@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import Dropdown from "antd/es/dropdown";
+import type { MenuProps } from "antd";
 import type { PiSessionProject } from "./types";
 
 function relativeTime(isoString: string): string {
@@ -20,6 +22,28 @@ interface PiSessionSectionProps {
   isStreaming: boolean;
   selectedSessionId: string | null;
   onSelectSession: (sessionId: string) => void;
+  onRename: (sessionId: string) => void;
+  archivedSessionIds: Set<string>;
+  onArchive: (sessionId: string) => void;
+  onRestore: (sessionId: string) => void;
+  refreshKey?: number;
+}
+
+function buildMenuItems(
+  sessionKey: string,
+  isArchived: boolean,
+  onRename: (id: string) => void,
+  onArchive: (id: string) => void,
+  onRestore: (id: string) => void
+): MenuProps["items"] {
+  if (isArchived) {
+    return [{ key: "restore", label: "Restore", onClick: () => onRestore(sessionKey) }];
+  }
+
+  return [
+    { key: "rename", label: "Rename", onClick: () => onRename(sessionKey) },
+    { key: "delete", label: "Delete", onClick: () => onArchive(sessionKey) }
+  ];
 }
 
 const ORDER_STORAGE_KEY = "my-pi-pi-project-order";
@@ -61,7 +85,12 @@ function sortProjectsByOrder(
 export function PiSessionSection({
   isStreaming,
   selectedSessionId,
-  onSelectSession
+  onSelectSession,
+  onRename,
+  archivedSessionIds,
+  onArchive,
+  onRestore,
+  refreshKey = 0
 }: PiSessionSectionProps) {
   const [projects, setProjects] = useState<PiSessionProject[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,11 +113,9 @@ export function PiSessionSection({
         const body = (await response.json()) as { projects: PiSessionProject[] };
         if (cancelled) return;
 
-        // Apply persisted project order
         const order = readStoredProjectOrder();
         const orderedProjects = sortProjectsByOrder(body.projects, order);
         setProjects(orderedProjects);
-        // All projects collapsed by default
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load Pi sessions");
@@ -102,7 +129,7 @@ export function PiSessionSection({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshKey]);
 
   function toggleProject(path: string) {
     setExpandedProjects((prev) => {
@@ -132,8 +159,6 @@ export function PiSessionSection({
       const order = readStoredProjectOrder();
       const orderedProjects = sortProjectsByOrder(body.projects, order);
       setProjects(orderedProjects);
-      // Keep collapsed by default
-      // Select the newly created session (first session of the target project)
       const targetProject = orderedProjects.find((p) => p.path === projectPath);
       if (targetProject && targetProject.sessions.length > 0) {
         onSelectSession(targetProject.sessions[0].id);
@@ -141,6 +166,10 @@ export function PiSessionSection({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create session");
     }
+  }
+
+  function stopPropagation(e: React.MouseEvent) {
+    e.stopPropagation();
   }
 
   /* ───── Project-level drag & drop ───── */
@@ -177,7 +206,6 @@ export function PiSessionSection({
       const [moved] = reordered.splice(sourceIdx, 1);
       reordered.splice(targetIdx, 0, moved);
 
-      // Persist
       writeStoredProjectOrder(reordered.map((p) => p.path));
 
       return reordered;
@@ -228,6 +256,9 @@ export function PiSessionSection({
         {projects.map((project) => {
           const isExpanded = expandedProjects.has(project.path);
           const isDragOver = dragOverProjectPath === project.path;
+          const visibleSessions = project.sessions.filter(
+            (s) => !archivedSessionIds.has(s.id)
+          );
 
           return (
             <div
@@ -272,29 +303,55 @@ export function PiSessionSection({
 
               {isExpanded && (
                 <div className="pi-session-list">
-                  {project.sessions.map((session) => (
-                    <button
-                      className={
-                        "pi-session-row" +
-                        (selectedSessionId === session.id
-                          ? " pi-session-row-active"
-                          : "")
-                      }
-                      key={session.id}
-                      disabled={isStreaming}
-                      type="button"
-                      onClick={() => onSelectSession(session.id)}
-                    >
-                      <div className="pi-session-info">
-                        <span className="pi-session-first-msg">
-                          {session.firstMessage}
+                  {visibleSessions.map((session) => {
+                    const isArchived = archivedSessionIds.has(session.id);
+
+                    return (
+                      <button
+                        className={
+                          "pi-session-row" +
+                          (selectedSessionId === session.id
+                            ? " pi-session-row-active"
+                            : "") +
+                          (isArchived ? " pi-session-row-archived" : "")
+                        }
+                        key={session.id}
+                        disabled={isStreaming}
+                        type="button"
+                        onClick={() => onSelectSession(session.id)}
+                      >
+                        <div className="pi-session-info">
+                          <span className="pi-session-first-msg">
+                            {session.name || session.firstMessage}
+                          </span>
+                          <small className="pi-session-meta">
+                            {session.messageCount} messages · {relativeTime(session.modified)}
+                          </small>
+                        </div>
+                        <span className="pi-session-menu-trigger" onClick={stopPropagation}>
+                          <Dropdown
+                            menu={{
+                              items: buildMenuItems(
+                                session.id,
+                                isArchived,
+                                onRename,
+                                onArchive,
+                                onRestore
+                              )
+                            }}
+                            placement="bottomRight"
+                            trigger={["click"]}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                              <circle cx="12" cy="5" r="2"/>
+                              <circle cx="12" cy="12" r="2"/>
+                              <circle cx="12" cy="19" r="2"/>
+                            </svg>
+                          </Dropdown>
                         </span>
-                        <small className="pi-session-meta">
-                          {session.messageCount} messages · {relativeTime(session.modified)}
-                        </small>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>

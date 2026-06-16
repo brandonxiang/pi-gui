@@ -36,6 +36,7 @@ export type StreamEvent =
 
 export interface PiSessionSummary {
   id: string;
+  name?: string;
   firstMessage: string;
   messageCount: number;
   created: string;
