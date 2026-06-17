@@ -1,24 +1,45 @@
-# pi-gui
+# pi-workspace
 
-`pi-gui` is a web-based agent conversation console built on the
-`@earendil-works/pi-coding-agent` SDK. It provides a browser UI while keeping
-model credentials and the Pi agent session runtime on the server.
+`pi-workspace` is a browser-based agent console built on the
+`@earendil-works/pi-coding-agent` SDK. It provides a desktop-like workspace UI
+where you can chat with Pi agents, browse past Pi sessions, and open a live
+terminal — all in one page.
 
 ## Features
 
-- Online chat interface for Pi-powered agent conversations
-- Server-side `createAgentSession()` integration from `@earendil-works/pi-coding-agent`
+### 对话模式 (Chat Mode)
+
+The default view. The right panel shows a conversational chat interface with
+streaming assistant responses, multi‑turn conversations, image attachment, and
+model selection. Pi session history from your local `~/.pi/agent/sessions/` is
+available in the sidebar — click any session to browse its full message history
+and continue the conversation from the chat panel.
+
 - Streaming assistant responses over Server-Sent Events
-- Model selector for common OpenAI, Anthropic, Google, Mistral, and Command Code models
+- Model selector for OpenAI, Anthropic, Google, Mistral, and Command Code models
 - Editable system prompt
-- Browser-side conversation transcript persistence
-- Server-side model auth through local Pi and Command Code login state
+- Image attachment for vision-capable models
+- Local conversation transcript persistence
+- Pi session browsing, creation, and continuation
+
+### 终端模式 (Terminal Mode)
+
+Switch to a full web terminal (xterm.js) in the right panel. A shell starts in
+the selected Pi session's project directory, and the `pi` CLI launches
+automatically — pointed directly at that session.
+
+- xterm.js with VS Code‑inspired dark theme
+- Auto‑fit to panel size
+- Server‑side PTY via `node-pty` with WebSocket transport
+- `pi` CLI launched automatically into the selected Pi session
+
+Switch modes in **Settings → 模式 → 对话模式 / 终端模式**.
 
 ## Quick Start
 
 ```bash
 npm install
-npm exec -- pi-gui
+npm exec -- pi-workspace
 ```
 
 If you already use Pi locally, the server reads your existing Pi auth from
@@ -30,47 +51,30 @@ When Command Code auth is present, the server fetches live models from
 `https://api.commandcode.ai/provider/v1/models` and registers them under the
 `commandcode` provider.
 
-If you want to customize the server port, you can still create a local `.env`
-from `.env.example` and change `PORT`.
-
-Start the packaged service:
+To customize the server port, create a local `.env` from `.env.example`
+and change `PORT`.
 
 ```bash
-npm exec -- pi-gui
+npm exec -- pi-workspace        # start the built service
+npm exec -- pi-workspace build  # build client + server bundles
+npm exec -- pi-workspace --help # show all options
 ```
 
 Open <http://127.0.0.1:8787>.
 
-Useful CLI commands:
+## Development
 
 ```bash
-npm exec -- pi-gui        # start the built service
-npm exec -- pi-gui build  # build client + server bundles
-npm exec -- pi-gui --help # show all options
+pnpm run dev     # starts the dev server with hot‑reload
+pnpm run build   # typecheck + build client + server
+pnpm start       # production start after build
 ```
-
-## npm Packaging
-
-`pi-gui` is set up as a publishable npm CLI package:
-
-- `npm publish` runs `prepack`, which builds `dist/client` and `dist-server`
-- the published tarball includes only the CLI entrypoint and built runtime assets
-- `pi-gui` starts the bundled production server directly from `dist-server/index.mjs`
-
-## Production
-
-```bash
-npm run build
-npm start
-```
-
-The production server listens on `PORT` or `8787` and serves both the API and
-the built frontend.
 
 ## Architecture
 
-- `src/` contains the React conversation UI.
-- `server/index.ts` owns the Pi Coding Agent SDK integration.
+- `client/` — React (Vite) UI with Ant Design X components.
+- `server/index.ts` — Fastify server that owns the Pi Coding Agent SDK
+  integration.
 - The frontend sends only the latest user prompt and session metadata.
 - The backend keeps a per-browser-session `AgentSession` in memory and streams
   `message_update` deltas back to the browser.
@@ -80,6 +84,15 @@ the built frontend.
 By default the server starts Pi sessions with `noTools: "all"` so the online
 chat cannot execute shell or file mutation tools. Add a deliberate tool allowlist
 only after adding authentication and permission controls.
+
+## npm Packaging
+
+The package ships as a CLI that bundles both the API server and the frontend:
+
+- `npm publish` runs `prepack`, which builds `dist/client` and `dist-server`
+- the published tarball includes only the CLI entrypoint and built runtime assets
+- `pi-workspace` starts the bundled production server directly from
+  `dist-server/index.mjs`
 
 ## Attribution
 

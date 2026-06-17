@@ -3,13 +3,14 @@
   "version": "0.1.0",
   "description": "CLI-launched browser UI for pi-coding-agent sessions",
   "bin": {
-    "pi-gui": "./bin/pi-gui.mjs"
+    "pi-workspace": "./bin/pi-gui.mjs"
   },
   "files": [
     "bin",
     "dist-server",
     "dist/client",
     "README.md",
+    "README.CN.md",
     ".env.example"
   ],
   "pnpm": {

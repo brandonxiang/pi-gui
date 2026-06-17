@@ -757,7 +757,7 @@ h2 {
 }
 
 .chat-bubble {
-  max-width: 760px;
+  width: 100%;
   line-height: 1.6;
 }
 
