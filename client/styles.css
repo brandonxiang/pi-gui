@@ -1076,6 +1076,24 @@ h2 {
   background: var(--card-tint-mint);
 }
 
+.terminal-panel {
+  width: 100%;
+  height: 100%;
+  background: #1e1e1e;
+  padding: 8px;
+  overflow: hidden;
+}
+
+.terminal-panel .xterm {
+  height: 100%;
+  padding: 4px;
+}
+
+.terminal-panel .xterm-viewport {
+  scrollbar-width: thin;
+  scrollbar-color: #424242 transparent;
+}
+
 .composer {
   padding: 12px 20px;
   border-top: 1px solid var(--hairline);
@@ -1230,6 +1248,43 @@ h2 {
   display: grid;
   gap: 18px;
   padding-top: 4px;
+}
+
+.settings-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.settings-btn {
+  min-height: 36px;
+  padding: 0 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.settings-btn-confirm {
+  border: 0;
+  background: var(--primary);
+  color: #fff;
+}
+
+.settings-btn-confirm:hover {
+  background: var(--primary-active);
+}
+
+.settings-btn-cancel {
+  border: 1px solid var(--hairline);
+  background: var(--canvas);
+  color: var(--ink-secondary);
+}
+
+.settings-btn-cancel:hover {
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 @media (max-width: 860px) {

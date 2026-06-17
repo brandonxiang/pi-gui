@@ -20,6 +20,7 @@ const PORT = Number(process.env.PORT || 8787);
 let child = null;
 let timer = null;
 let shuttingDown = false;
+let ready = false;
 
 function log(...args) {
   console.log("[dev]", ...args);
@@ -39,6 +40,7 @@ function build() {
 function start() {
   return new Promise((resolve) => {
     log("Starting…");
+    ready = false;
     child = spawn(process.execPath, ["dist-server/index.mjs", "--dev"], {
       stdio: "inherit",
     });
@@ -99,6 +101,7 @@ async function rebuildAndRestart() {
 
 function onSourceChange(changeType, filename) {
   if (!filename) return;
+  if (!ready) return; // Ignore stale events during startup/build
   // Skip test files, temp files, and sourcemaps
   if (filename.startsWith(".") || filename.endsWith(".test.ts") || filename.endsWith(".map")) {
     return;
@@ -118,6 +121,15 @@ async function main() {
   // 3. Watch server/ source files
   log("Watching server/…");
   const watcher = watch("server", { recursive: true }, onSourceChange);
+
+  // 4. Settle period — ignore watcher events for a bit after startup
+  // to avoid stale filesystem events from the build process.
+  // Vite HMR handles client-side hot reloading, so we never restart
+  // for client/ changes.
+  setTimeout(() => {
+    ready = true;
+    log("Ready — server and watcher settled");
+  }, 3000);
 
   function cleanup() {
     shuttingDown = true;

@@ -15,6 +15,10 @@ import type {
   UserMessage
 } from "./types";
 import { PiSessionSection } from "./PiSessionSection";
+import { TerminalPanel } from "./TerminalPanel";
+
+const PANEL_MODE_STORAGE_KEY = "my-pi-panel-mode";
+type PanelMode = "chat" | "terminal";
 
 const STORAGE_KEY = "my-pi-chat-session";
 const SESSIONS_STORAGE_KEY = "my-pi-chat-sessions";
@@ -395,6 +399,8 @@ export default function App() {
   const [modelOptions, setModelOptions] = useState<ModelOption[]>(modelPresets);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
+  const [settingsDraft, setSettingsDraft] = useState({ modelKey: "", panelMode: "chat" as PanelMode, systemPrompt: "" });
+  const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [archivedPiSessionIds, setArchivedPiSessionIds] = useState<Set<string>>(() => {
     try {
@@ -410,12 +416,43 @@ const [draftThinking, setDraftThinking] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [piRefreshKey, setPiRefreshKey] = useState(0);
+  const [panelMode, setPanelMode] = useState<PanelMode>(() => {
+    try {
+      const stored = localStorage.getItem(PANEL_MODE_STORAGE_KEY);
+      if (stored === "terminal" || stored === "chat") return stored;
+    } catch {}
+    return "chat";
+  });
+  const [serverCwd, setServerCwd] = useState("");
   const [activePanelView, setActivePanelView] = useState<ActivePanelView>({ kind: "local" });
   const [piSessionDetail, setPiSessionDetail] = useState<PiSessionDetailResponse | null>(null);
   const [piPendingMessages, setPiPendingMessages] = useState<PiHistoryMessage[]>([]);
   const [piSessionError, setPiSessionError] = useState<string | null>(null);
   const [piSessionLoading, setPiSessionLoading] = useState(false);
   const [draftToolMessages, setDraftToolMessages] = useState<Map<string, { toolName: string; content: string; isError: boolean }>>(new Map());
+
+  /* ───── Resolve cwd for terminal panel ───── */
+  const terminalCwd = useMemo(() => {
+    if (activePanelView.kind === "pi" && piSessionDetail) {
+      return piSessionDetail.session.cwd;
+    }
+    return serverCwd || "";
+  }, [activePanelView, piSessionDetail, serverCwd]);
+
+  /* ───── Resolve initial command for terminal panel ───── */
+  // When a Pi session is selected in terminal mode, auto-launch pi into that session
+  const terminalInitialCommand = useMemo(() => {
+    if (activePanelView.kind === "pi") {
+      return `pi --session ${activePanelView.sessionId}`;
+    }
+    return undefined;
+  }, [activePanelView]);
+
+  /* ───── Persist panel mode ───── */
+  useEffect(() => {
+    localStorage.setItem(PANEL_MODE_STORAGE_KEY, panelMode);
+  }, [panelMode]);
+
   const sessionIdRef = useRef<string>("");
   const piSessionRequestIdRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -564,6 +601,16 @@ const [draftThinking, setDraftThinking] = useState("");
     }
 
     loadModels();
+
+    // Load server cwd for terminal panel
+    fetch("/api/cwd")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data.cwd) {
+          setServerCwd(data.cwd);
+        }
+      })
+      .catch(() => {})
 
     return () => {
       cancelled = true;
@@ -749,6 +796,17 @@ const [draftThinking, setDraftThinking] = useState("");
         setPiSessionLoading(false);
       }
     }
+  }
+
+  function handleSettingsConfirm() {
+    setModelKey(settingsDraft.modelKey);
+    setPanelMode(settingsDraft.panelMode);
+    setSystemPrompt(settingsDraft.systemPrompt);
+    setIsSettingsOpen(false);
+  }
+
+  function handleSettingsCancel() {
+    setIsSettingsOpen(false);
   }
 
   async function submitMessage(messageText: string) {
@@ -1026,7 +1084,10 @@ const [draftThinking, setDraftThinking] = useState("");
                 <line x1="5" y1="12" x2="19" y2="12"/>
               </svg>
             </button>
-            <button className="icon-button" type="button" onClick={() => setIsSettingsOpen(true)} title="Settings">
+            <button className="icon-button" type="button" onClick={() => {
+              setSettingsDraft({ modelKey, panelMode, systemPrompt });
+              setIsSettingsOpen(true);
+            }} title="Settings">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="3"/>
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -1144,6 +1205,17 @@ const [draftThinking, setDraftThinking] = useState("");
           </button>
         )}
 
+        {panelMode === "terminal" ? (
+          <section className="chat-panel" aria-label="Terminal">
+            <header className="chat-header">
+              <div className="chat-header-copy">
+                <span className="chat-header-title">Terminal</span>
+                <small className="chat-header-meta">{terminalCwd}</small>
+              </div>
+            </header>
+            <TerminalPanel cwd={terminalCwd} initialCommand={terminalInitialCommand} sessionId={activePanelView.kind === "pi" ? activePanelView.sessionId : activeSessionId} />
+          </section>
+        ) : (
         <section className="chat-panel" aria-label="Agent conversation">
           <header className="chat-header">
             <div className="chat-header-copy">
@@ -1281,18 +1353,28 @@ const [draftThinking, setDraftThinking] = useState("");
             </Suggestion>
           </div>
         </section>
+        )}
       </main>
       <Modal
         centered
         open={isSettingsOpen}
         title="Settings"
-        footer={null}
-        onCancel={() => setIsSettingsOpen(false)}
+        footer={
+          <div className="settings-footer">
+            <button className="settings-btn settings-btn-cancel" type="button" onClick={handleSettingsCancel}>
+              取消
+            </button>
+            <button className="settings-btn settings-btn-confirm" type="button" onClick={handleSettingsConfirm}>
+              确认
+            </button>
+          </div>
+        }
+        onCancel={handleSettingsCancel}
       >
         <div className="settings-modal-content">
           <label className="field">
             <span>Model</span>
-            <select value={modelKey} onChange={(event) => setModelKey(event.target.value)}>
+            <select value={settingsDraft.modelKey} onChange={(event) => setSettingsDraft((prev) => ({ ...prev, modelKey: event.target.value }))}>
               {modelOptions.map((preset) => (
                 <option key={getModelKey(preset.provider, preset.model)} value={getModelKey(preset.provider, preset.model)}>
                   {preset.label}{preset.supportsImages ? " · vision" : ""}
@@ -1302,11 +1384,22 @@ const [draftThinking, setDraftThinking] = useState("");
           </label>
 
           <label className="field">
+            <span>模式</span>
+            <select
+              value={settingsDraft.panelMode}
+              onChange={(event) => setSettingsDraft((prev) => ({ ...prev, panelMode: event.target.value as PanelMode }))}
+            >
+              <option value="chat">对话模式</option>
+              <option value="terminal">终端模式</option>
+            </select>
+          </label>
+
+          <label className="field">
             <span>System prompt</span>
             <textarea
-              value={systemPrompt}
+              value={settingsDraft.systemPrompt}
               rows={7}
-              onChange={(event) => setSystemPrompt(event.target.value)}
+              onChange={(event) => setSettingsDraft((prev) => ({ ...prev, systemPrompt: event.target.value }))}
             />
           </label>
         </div>
