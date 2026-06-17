@@ -440,7 +440,8 @@ const [draftThinking, setDraftThinking] = useState("");
   }, [activePanelView, piSessionDetail, serverCwd]);
 
   /* ───── Resolve initial command for terminal panel ───── */
-  // When a Pi session is selected in terminal mode, auto-launch pi into that session
+  // In terminal mode with a Pi session selected, auto-launch pi into that session.
+  // Uses activePanelView directly so it works immediately without waiting for piSessionDetail.
   const terminalInitialCommand = useMemo(() => {
     if (activePanelView.kind === "pi") {
       return `pi --session ${activePanelView.sessionId}`;
@@ -1213,7 +1214,16 @@ const [draftThinking, setDraftThinking] = useState("");
                 <small className="chat-header-meta">{terminalCwd}</small>
               </div>
             </header>
+            {activePanelView.kind === "pi" && !piSessionDetail ? (
+              <div className="messages messages-empty">
+                <div className="empty-state">
+                  <h3>Loading terminal…</h3>
+                  <p>Fetching Pi session details to launch in terminal mode.</p>
+                </div>
+              </div>
+            ) : (
             <TerminalPanel cwd={terminalCwd} initialCommand={terminalInitialCommand} sessionId={activePanelView.kind === "pi" ? activePanelView.sessionId : activeSessionId} />
+            )}
           </section>
         ) : (
         <section className="chat-panel" aria-label="Agent conversation">

@@ -666,9 +666,10 @@ async function buildServer() {
   return server;
 }
 
-/** SPI to find a Pi session file path by session ID. Set by pi-sessions.ts at startup. */
-export let resolvePiSessionPath: ((sessionId: string) => string | null) | null = null;
-
+/**
+ * Auto-launch a Pi CLI command in the terminal.
+ * Accepts a `cmd` query param — executes it ~600ms after shell starts.
+ */
 function setupTerminalWebSocket(httpServer: import("node:http").Server) {
   const wss = new WebSocketServer({ noServer: true });
 

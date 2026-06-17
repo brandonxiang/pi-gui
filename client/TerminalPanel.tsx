@@ -144,7 +144,7 @@ export function TerminalPanel({ cwd, initialCommand }: TerminalPanelProps) {
       term.dispose();
       fitAddonRef.current = null;
     };
-  }, [cwd]);
+  }, [cwd, initialCommand]);
 
   return <div ref={terminalRef} className="terminal-panel" />;
 }
