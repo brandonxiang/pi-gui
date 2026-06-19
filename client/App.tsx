@@ -1,5 +1,7 @@
-import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Dropdown, Input, Modal } from "antd";
+import { Suspense, lazy, type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import Dropdown from "antd/es/dropdown";
+import Input from "antd/es/input";
+import Modal from "antd/es/modal";
 import Bubble, { type BubbleItemType, type BubbleListProps } from "@ant-design/x/es/bubble";
 import Sender from "@ant-design/x/es/sender";
 import Suggestion, { type SuggestionItem } from "@ant-design/x/es/suggestion";
@@ -14,7 +16,6 @@ import {
   type TranslationKey,
   type Translator
 } from "./i18n";
-import MarkdownContent from "./MarkdownContent";
 import type {
   AssistantMessage,
   ChatMessage,
@@ -25,7 +26,12 @@ import type {
   UserMessage
 } from "./types";
 import { PiSessionSection } from "./PiSessionSection";
-import { TerminalPanel } from "./TerminalPanel";
+
+const MarkdownContent = lazy(() => import("./MarkdownContent"));
+const TerminalPanel = lazy(async () => {
+  const module = await import("./TerminalPanel");
+  return { default: module.TerminalPanel };
+});
 
 const PANEL_MODE_STORAGE_KEY = "my-pi-panel-mode";
 type PanelMode = "chat" | "terminal";
@@ -97,7 +103,7 @@ const bubbleRoles: BubbleListProps["role"] = {
     className: "chat-bubble chat-bubble-assistant",
     contentRender(content) {
       if (typeof content === "string") {
-        return <MarkdownContent content={content} />;
+        return <RenderMarkdown content={content} />;
       }
       return content;
     }
@@ -200,6 +206,18 @@ function MessageHeader({ label, meta }: { label: string; meta: string }) {
       <span>{label}</span>
       <small>{meta}</small>
     </div>
+  );
+}
+
+function MarkdownFallback({ content }: { content: string }) {
+  return <p>{content}</p>;
+}
+
+function RenderMarkdown({ content }: { content: string }) {
+  return (
+    <Suspense fallback={<MarkdownFallback content={content} />}>
+      <MarkdownContent content={content} />
+    </Suspense>
   );
 }
 
@@ -566,7 +584,7 @@ export default function App() {
             <div className="thinking-content">{draftThinking}</div>
           </details>
         ) : null}
-        {draftAssistant ? <MarkdownContent content={draftAssistant} /> : null}
+        {draftAssistant ? <RenderMarkdown content={draftAssistant} /> : null}
       </div>
     ) : (
       draftAssistant
@@ -1291,12 +1309,22 @@ export default function App() {
                 </div>
               </div>
             ) : (
-              <TerminalPanel
-                cwd={terminalCwd}
-                initialCommand={terminalInitialCommand}
-                locale={locale}
-                sessionId={activePanelView.kind === "pi" ? activePanelView.sessionId : activeSessionId}
-              />
+              <Suspense
+                fallback={
+                  <div className="messages messages-empty">
+                    <div className="empty-state">
+                      <h3>{t("panel.loadingTerminalTitle")}</h3>
+                    </div>
+                  </div>
+                }
+              >
+                <TerminalPanel
+                  cwd={terminalCwd}
+                  initialCommand={terminalInitialCommand}
+                  locale={locale}
+                  sessionId={activePanelView.kind === "pi" ? activePanelView.sessionId : activeSessionId}
+                />
+              </Suspense>
             )}
           </section>
         ) : (

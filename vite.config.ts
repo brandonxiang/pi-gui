@@ -7,7 +7,20 @@ export default {
   plugins: [viteFastify({ spa: true }), viteReact()],
   build: {
     emptyOutDir: true,
-    outDir: resolve(import.meta.dirname, "dist")
+    outDir: resolve(import.meta.dirname, "dist"),
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (id.includes("@xterm")) {
+            return "terminal";
+          }
+
+          if (id.includes("antd") || id.includes("@ant-design")) {
+            return "ui-vendor";
+          }
+        }
+      }
+    }
   },
   // Vitest config — relative to vite root (client/)
   test: {
