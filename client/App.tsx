@@ -4,6 +4,16 @@ import Bubble, { type BubbleItemType, type BubbleListProps } from "@ant-design/x
 import Sender from "@ant-design/x/es/sender";
 import Suggestion, { type SuggestionItem } from "@ant-design/x/es/suggestion";
 import XProvider from "@ant-design/x/es/x-provider";
+import {
+  createTranslator,
+  formatMessageCount,
+  LOCALE_STORAGE_KEY,
+  localeOptions,
+  readStoredLocale,
+  type Locale,
+  type TranslationKey,
+  type Translator
+} from "./i18n";
 import MarkdownContent from "./MarkdownContent";
 import type {
   AssistantMessage,
@@ -55,28 +65,28 @@ type ActivePanelView = { kind: "local" } | { kind: "pi"; sessionId: string };
 const defaultSystemPrompt =
   "You are My Pi, an online agent conversation assistant. Be concise, practical, and explicit about assumptions.";
 
-const slashCommands = [
-  { name: "settings", description: "Open settings menu" },
-  { name: "model", description: "Select model" },
-  { name: "scoped-models", description: "Enable or disable model cycling" },
-  { name: "export", description: "Export session" },
-  { name: "import", description: "Import a JSONL session" },
-  { name: "share", description: "Share session as a private gist" },
-  { name: "copy", description: "Copy last assistant message" },
-  { name: "name", description: "Set session display name" },
-  { name: "session", description: "Show session info and stats" },
-  { name: "changelog", description: "Show changelog entries" },
-  { name: "hotkeys", description: "Show keyboard shortcuts" },
-  { name: "fork", description: "Fork from a previous message" },
-  { name: "clone", description: "Duplicate current session branch" },
-  { name: "tree", description: "Navigate session tree" },
-  { name: "login", description: "Configure provider authentication" },
-  { name: "logout", description: "Remove provider authentication" },
-  { name: "new", description: "Start a new session" },
-  { name: "compact", description: "Compact session context" },
-  { name: "resume", description: "Resume a different session" },
-  { name: "reload", description: "Reload resources" },
-  { name: "quit", description: "Quit pi" }
+const slashCommands: Array<{ name: string; descriptionKey: TranslationKey }> = [
+  { name: "settings", descriptionKey: "slash.settings" },
+  { name: "model", descriptionKey: "slash.model" },
+  { name: "scoped-models", descriptionKey: "slash.scoped-models" },
+  { name: "export", descriptionKey: "slash.export" },
+  { name: "import", descriptionKey: "slash.import" },
+  { name: "share", descriptionKey: "slash.share" },
+  { name: "copy", descriptionKey: "slash.copy" },
+  { name: "name", descriptionKey: "slash.name" },
+  { name: "session", descriptionKey: "slash.session" },
+  { name: "changelog", descriptionKey: "slash.changelog" },
+  { name: "hotkeys", descriptionKey: "slash.hotkeys" },
+  { name: "fork", descriptionKey: "slash.fork" },
+  { name: "clone", descriptionKey: "slash.clone" },
+  { name: "tree", descriptionKey: "slash.tree" },
+  { name: "login", descriptionKey: "slash.login" },
+  { name: "logout", descriptionKey: "slash.logout" },
+  { name: "new", descriptionKey: "slash.new" },
+  { name: "compact", descriptionKey: "slash.compact" },
+  { name: "resume", descriptionKey: "slash.resume" },
+  { name: "reload", descriptionKey: "slash.reload" },
+  { name: "quit", descriptionKey: "slash.quit" }
 ];
 
 const bubbleRoles: BubbleListProps["role"] = {
@@ -126,31 +136,40 @@ function createSession(title = "Untitled session", messages: ChatMessage[] = [])
   };
 }
 
-function getSessionTitleFromMessages(messages: ChatMessage[]) {
+function getSessionTitleFromMessages(messages: ChatMessage[], untitledTitle: string) {
   const firstUserMessage = messages.find((message) => message.role === "user");
-  if (!firstUserMessage?.content.trim()) return "Untitled session";
+  if (!firstUserMessage?.content.trim()) return untitledTitle;
   return firstUserMessage.content.trim().slice(0, 48);
 }
 
-function readStoredSessions(): ChatSession[] {
+function readStoredSessions(locale: Locale): ChatSession[] {
+  const t = createTranslator(locale);
+
   try {
     const rawSessions = localStorage.getItem(SESSIONS_STORAGE_KEY);
     if (rawSessions) {
       const parsed = JSON.parse(rawSessions) as ChatSession[];
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.some((session) => !session.archived) ? parsed : [createSession(), ...parsed];
+        return parsed.some((session) => !session.archived)
+          ? parsed
+          : [createSession(t("session.untitled")), ...parsed];
       }
     }
 
     const legacyMessages = readStoredMessages();
     if (legacyMessages.length > 0) {
-      return [createSession(getSessionTitleFromMessages(legacyMessages), legacyMessages)];
+      return [
+        createSession(
+          getSessionTitleFromMessages(legacyMessages, t("session.untitled")),
+          legacyMessages
+        )
+      ];
     }
   } catch {
     // Fall through to a clean session if local storage is unavailable or corrupted.
   }
 
-  return [createSession()];
+  return [createSession(t("session.untitled"))];
 }
 
 function getMessageText(message: ChatMessage) {
@@ -225,15 +244,17 @@ function PiHistoryUserMessageContent({
 }
 
 function PiToolMessageContent({
+  t,
   message
 }: {
+  t: Translator;
   message: Extract<PiHistoryMessage, { role: "tool" }>;
 }) {
   return (
     <details className={message.isError ? "pi-tool-card pi-tool-card-error" : "pi-tool-card"}>
       <summary>
         <span>{message.toolName}</span>
-        <small>Click to expand</small>
+        <small>{t("chat.clickToExpand")}</small>
       </summary>
       <pre>{message.content}</pre>
     </details>
@@ -253,7 +274,12 @@ function PiSummaryMessageContent({
   );
 }
 
-function createBubbleItem(message: ChatMessage, index: number): BubbleItemType {
+function createBubbleItem(
+  message: ChatMessage,
+  index: number,
+  locale: Locale,
+  t: Translator
+): BubbleItemType {
   const isAssistant = message.role === "assistant";
 
   return {
@@ -262,20 +288,24 @@ function createBubbleItem(message: ChatMessage, index: number): BubbleItemType {
     content: isAssistant ? getMessageText(message) : <UserMessageContent message={message} />,
     header: (
       <MessageHeader
-        label={isAssistant ? "My Pi" : "You"}
-        meta={isAssistant ? `${message.provider}/${message.model}` : new Date(message.timestamp).toLocaleTimeString()}
+        label={isAssistant ? t("chat.myPi") : t("chat.you")}
+        meta={
+          isAssistant
+            ? `${message.provider}/${message.model}`
+            : new Date(message.timestamp).toLocaleTimeString(locale)
+        }
       />
     )
   };
 }
 
-function createPiHistoryBubbleItem(message: PiHistoryMessage, index: number): BubbleItemType {
+function createPiHistoryBubbleItem(message: PiHistoryMessage, index: number, t: Translator): BubbleItemType {
   if (message.role === "user") {
     return {
       key: `${message.role}-${message.timestamp}-${index}`,
       role: "user",
       content: <PiHistoryUserMessageContent message={message} />,
-      header: <MessageHeader label="Pi Session" meta="User" />
+      header: <MessageHeader label={t("chat.piSession")} meta={t("chat.user")} />
     };
   }
 
@@ -286,8 +316,8 @@ function createPiHistoryBubbleItem(message: PiHistoryMessage, index: number): Bu
       content: message.content,
       header: (
         <MessageHeader
-          label="Pi Session"
-          meta={message.provider && message.model ? `${message.provider}/${message.model}` : "Assistant"}
+          label={t("chat.piSession")}
+          meta={message.provider && message.model ? `${message.provider}/${message.model}` : t("chat.assistant")}
         />
       )
     };
@@ -297,8 +327,8 @@ function createPiHistoryBubbleItem(message: PiHistoryMessage, index: number): Bu
     return {
       key: `${message.role}-${message.timestamp}-${index}`,
       role: "assistant",
-      content: <PiToolMessageContent message={message} />,
-      header: <MessageHeader label="Tool" meta={message.toolName} />
+      content: <PiToolMessageContent t={t} message={message} />,
+      header: <MessageHeader label={t("chat.tool")} meta={message.toolName} />
     };
   }
 
@@ -306,7 +336,7 @@ function createPiHistoryBubbleItem(message: PiHistoryMessage, index: number): Bu
     key: `${message.role}-${message.timestamp}-${index}`,
     role: "assistant",
     content: <PiSummaryMessageContent message={message} />,
-    header: <MessageHeader label={message.title} meta="Pi session summary" />
+    header: <MessageHeader label={message.title} meta={t("chat.piSessionSummary")} />
   };
 }
 
@@ -327,7 +357,7 @@ function shouldShowSlashSuggestions(value: string) {
   return /^\/[\w-]*$/.test(value);
 }
 
-function getSlashSuggestionItems(info?: SlashSuggestionInfo): SuggestionItem[] {
+function getSlashSuggestionItems(t: Translator, info?: SlashSuggestionInfo): SuggestionItem[] {
   const query = info?.query.toLowerCase() || "";
   const matchedCommands = slashCommands.filter((command) =>
     command.name.toLowerCase().includes(query)
@@ -337,7 +367,7 @@ function getSlashSuggestionItems(info?: SlashSuggestionInfo): SuggestionItem[] {
     label: (
       <div className="slash-command-option">
         <span>/{command.name}</span>
-        <small>{command.description}</small>
+        <small>{t(command.descriptionKey)}</small>
       </div>
     ),
     value: `/${command.name}`,
@@ -380,7 +410,9 @@ async function readEventStream(response: Response, onEvent: (event: StreamEvent)
 }
 
 export default function App() {
-  const initialSessions = useMemo(() => readStoredSessions(), []);
+  const [locale, setLocale] = useState<Locale>(() => readStoredLocale());
+  const t = useMemo(() => createTranslator(locale), [locale]);
+  const initialSessions = useMemo(() => readStoredSessions(locale), []);
   const [sessions, setSessions] = useState<ChatSession[]>(initialSessions);
   const [activeSessionId, setActiveSessionId] = useState(() => {
     const stored = localStorage.getItem(ACTIVE_SESSION_KEY);
@@ -399,7 +431,12 @@ export default function App() {
   const [modelOptions, setModelOptions] = useState<ModelOption[]>(modelPresets);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
-  const [settingsDraft, setSettingsDraft] = useState({ modelKey: "", panelMode: "chat" as PanelMode, systemPrompt: "" });
+  const [settingsDraft, setSettingsDraft] = useState({
+    modelKey: "",
+    panelMode: "chat" as PanelMode,
+    systemPrompt: "",
+    locale
+  });
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [archivedPiSessionIds, setArchivedPiSessionIds] = useState<Set<string>>(() => {
@@ -411,7 +448,7 @@ export default function App() {
     }
   });
   const [draftAssistant, setDraftAssistant] = useState("");
-const [draftThinking, setDraftThinking] = useState("");
+  const [draftThinking, setDraftThinking] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -453,6 +490,15 @@ const [draftThinking, setDraftThinking] = useState("");
   useEffect(() => {
     localStorage.setItem(PANEL_MODE_STORAGE_KEY, panelMode);
   }, [panelMode]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LOCALE_STORAGE_KEY, locale);
+    } catch {
+      // Ignore storage errors and keep the current in-memory preference.
+    }
+    document.documentElement.lang = locale;
+  }, [locale]);
 
   const sessionIdRef = useRef<string>("");
   const piSessionRequestIdRef = useRef(0);
@@ -499,14 +545,14 @@ const [draftThinking, setDraftThinking] = useState("");
         <details className="pi-tool-card" open>
           <summary>
             <span>{entry.toolName}</span>
-            <small>Running…</small>
+            <small>{t("chat.streaming")}</small>
           </summary>
-          <pre>{entry.content || "(waiting for output…)"}</pre>
+          <pre>{entry.content || "…"}</pre>
         </details>
       ),
-      header: <MessageHeader label="Tool" meta={entry.toolName} />
+      header: <MessageHeader label={t("chat.tool")} meta={entry.toolName} />
     }));
-  }, [draftToolMessages]);
+  }, [draftToolMessages, t]);
 
   const streamingBubbleItem = useMemo<BubbleItemType | null>(() => {
     if (!draftAssistant && !draftThinking && draftToolMessages.size === 0) return null;
@@ -516,7 +562,7 @@ const [draftThinking, setDraftThinking] = useState("");
       <div>
         {draftThinking ? (
           <details className="thinking-block" open>
-            <summary>Thinking</summary>
+            <summary>{t("chat.thinking")}</summary>
             <div className="thinking-content">{draftThinking}</div>
           </details>
         ) : null}
@@ -532,12 +578,12 @@ const [draftThinking, setDraftThinking] = useState("");
       content,
       streaming: isStreaming,
       status: "updating" as const,
-      header: <MessageHeader label="My Pi" meta="streaming" />
+      header: <MessageHeader label={t("chat.myPi")} meta={t("chat.streaming")} />
     };
-  }, [draftAssistant, draftThinking, draftToolMessages, isStreaming]);
+  }, [draftAssistant, draftThinking, draftToolMessages, isStreaming, t]);
 
   const localBubbleItems = useMemo<BubbleItemType[]>(() => {
-    const storedItems = messages.map(createBubbleItem);
+    const storedItems = messages.map((message, index) => createBubbleItem(message, index, locale, t));
     if (!streamingBubbleItem && draftToolBubbleItems.length === 0) return storedItems;
 
     return [
@@ -545,10 +591,12 @@ const [draftThinking, setDraftThinking] = useState("");
       ...draftToolBubbleItems,
       ...(streamingBubbleItem ? [streamingBubbleItem] : [])
     ];
-  }, [draftToolBubbleItems, messages, streamingBubbleItem]);
+  }, [draftToolBubbleItems, locale, messages, streamingBubbleItem, t]);
 
   const piHistoryBubbleItems = useMemo<BubbleItemType[]>(() => {
-    const items = [...piHistoryMessages, ...piPendingMessages].map(createPiHistoryBubbleItem);
+    const items = [...piHistoryMessages, ...piPendingMessages].map((message, index) =>
+      createPiHistoryBubbleItem(message, index, t)
+    );
     if (!streamingBubbleItem && draftToolBubbleItems.length === 0) return items;
 
     return [
@@ -556,12 +604,12 @@ const [draftThinking, setDraftThinking] = useState("");
       ...draftToolBubbleItems,
       ...(streamingBubbleItem ? [streamingBubbleItem] : [])
     ];
-  }, [draftToolBubbleItems, piHistoryMessages, piPendingMessages, streamingBubbleItem]);
+  }, [draftToolBubbleItems, piHistoryMessages, piPendingMessages, streamingBubbleItem, t]);
 
   const isPiHistoryView = activePanelView.kind === "pi";
   const panelTitle = isPiHistoryView
-    ? piSessionDetail?.session.name || "Pi session"
-    : activeSession?.title || "Agent dialogue";
+    ? piSessionDetail?.session.name || t("chat.piSession")
+    : activeSession?.title || t("chat.agentDialogue");
   const panelMeta =
     isPiHistoryView && piSessionDetail
       ? `${piSessionDetail.session.projectName} · ${piSessionDetail.session.cwd}`
@@ -625,9 +673,9 @@ const [draftThinking, setDraftThinking] = useState("");
   useEffect(() => {
     if (selectedImage && !selectedModelSupportsImages) {
       setSelectedImage(null);
-      setError("Removed the attached image because the selected model does not support image input.");
+      setError(t("errors.removedImageUnsupported"));
     }
-  }, [selectedImage, selectedModelSupportsImages]);
+  }, [selectedImage, selectedModelSupportsImages, t]);
 
   function updateSession(sessionId: string, updater: (session: ChatSession) => ChatSession) {
     setSessions((current) =>
@@ -643,7 +691,7 @@ const [draftThinking, setDraftThinking] = useState("");
   }
 
   function createNewSession() {
-    const nextSession = createSession();
+    const nextSession = createSession(t("session.untitled"));
     setSessions((current) => [nextSession, ...current]);
     setActiveSessionId(nextSession.id);
     setActivePanelView({ kind: "local" });
@@ -674,7 +722,7 @@ const [draftThinking, setDraftThinking] = useState("");
     const targetId = renameTargetId;
     if (!targetId) return;
 
-    const newName = renameDraft.trim() || "Untitled session";
+    const newName = renameDraft.trim() || t("session.untitled");
 
     // Update local session title immediately.
     updateSession(targetId, (session) => ({ ...session, title: newName }));
@@ -711,7 +759,9 @@ const [draftThinking, setDraftThinking] = useState("");
   function archiveLocalSession(sessionId: string) {
     updateSession(sessionId, (session) => ({ ...session, archived: true }));
     if (activePanelView.kind === "local" && activeSessionId === sessionId) {
-      const nextActive = visibleSessions.find((session) => session.id !== sessionId) || createSession();
+      const nextActive =
+        visibleSessions.find((session) => session.id !== sessionId) ||
+        createSession(t("session.untitled"));
       if (!sessions.some((session) => session.id === nextActive.id)) {
         setSessions((current) => [nextActive, ...current]);
       }
@@ -803,6 +853,7 @@ const [draftThinking, setDraftThinking] = useState("");
     setModelKey(settingsDraft.modelKey);
     setPanelMode(settingsDraft.panelMode);
     setSystemPrompt(settingsDraft.systemPrompt);
+    setLocale(settingsDraft.locale);
     setIsSettingsOpen(false);
   }
 
@@ -815,13 +866,13 @@ const [draftThinking, setDraftThinking] = useState("");
     if ((!trimmed && !selectedImage) || isStreaming) return;
 
     if (selectedImage && !selectedModelSupportsImages) {
-      setError("The selected model does not support image input. Choose a vision-capable model.");
+      setError(t("errors.noImageSupport"));
       return;
     }
 
     const userMessage: UserMessage = {
       role: "user",
-      content: trimmed || "Please analyze this image.",
+      content: trimmed || t("composer.defaultImagePrompt"),
       images: selectedImage ? [selectedImage] : undefined,
       timestamp: Date.now()
     };
@@ -834,7 +885,10 @@ const [draftThinking, setDraftThinking] = useState("");
 
       updateSession(conversationId, (session) => ({
         ...session,
-        title: session.messages.length === 0 ? getSessionTitleFromMessages([userMessage]) : session.title,
+        title:
+          session.messages.length === 0
+            ? getSessionTitleFromMessages([userMessage], t("session.untitled"))
+            : session.title,
         messages: nextMessages
       }));
     } else {
@@ -1015,7 +1069,11 @@ const [draftThinking, setDraftThinking] = useState("");
         setPiPendingMessages([]);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unexpected chat error");
+      if (err instanceof Error && err.message === "No response stream returned.") {
+        setError(t("errors.streamMissing"));
+      } else {
+        setError(err instanceof Error ? err.message : t("errors.unexpectedChat"));
+      }
       if (activePanelView.kind === "pi") {
         setPiPendingMessages([]);
       }
@@ -1036,15 +1094,15 @@ const [draftThinking, setDraftThinking] = useState("");
     if (!file) return;
 
     if (!selectedModelSupportsImages) {
-      setError("The selected model does not support image input. Choose a vision-capable model.");
+      setError(t("errors.noImageSupport"));
       return;
     }
     if (!supportedImageMimeTypes.includes(file.type)) {
-      setError("Upload a PNG, JPEG, WebP, or GIF image.");
+      setError(t("errors.uploadSupportedImage"));
       return;
     }
     if (file.size > maxImageBytes) {
-      setError("Image must be smaller than 5 MB.");
+      setError(t("errors.imageTooLarge"));
       return;
     }
 
@@ -1058,8 +1116,8 @@ const [draftThinking, setDraftThinking] = useState("");
         data
       });
       setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to read image file");
+    } catch {
+      setError(t("errors.readImageFailed"));
     }
   }
 
@@ -1079,26 +1137,37 @@ const [draftThinking, setDraftThinking] = useState("");
               </svg>
             </div>
             <div className="sidebar-actions">
-              <button className="icon-button" disabled={isStreaming} type="button" onClick={createNewSession} title="New session">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"/>
-                <line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
-            </button>
-            <button className="icon-button" type="button" onClick={() => {
-              setSettingsDraft({ modelKey, panelMode, systemPrompt });
-              setIsSettingsOpen(true);
-            }} title="Settings">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-              </svg>
-            </button>
+              <button
+                className="icon-button"
+                disabled={isStreaming}
+                type="button"
+                title={t("sidebar.newSession")}
+                onClick={createNewSession}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+              </button>
+              <button
+                className="icon-button"
+                type="button"
+                title={t("settings.title")}
+                onClick={() => {
+                  setSettingsDraft({ modelKey, panelMode, systemPrompt, locale });
+                  setIsSettingsOpen(true);
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+              </button>
             <button
               className="sidebar-collapse-btn"
               type="button"
               onClick={() => setSidebarCollapsed(true)}
-              title="Collapse sidebar"
+              title={t("sidebar.collapse")}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="15 18 9 12 15 6"/>
@@ -1109,7 +1178,7 @@ const [draftThinking, setDraftThinking] = useState("");
 
           <div className="session-manager">
             <div className="session-section-heading">
-              <span>Conversations</span>
+              <span>{t("sidebar.conversations")}</span>
               <small>{visibleSessions.length}</small>
             </div>
 
@@ -1130,15 +1199,15 @@ const [draftThinking, setDraftThinking] = useState("");
                     onClick={() => selectLocalSession(session.id)}
                   >
                     <span>{session.title}</span>
-                    <small>{session.messages.length} messages</small>
+                    <small>{formatMessageCount(locale, session.messages.length)}</small>
                   </button>
 
                   <span className="session-menu-trigger" onClick={(e) => e.stopPropagation()}>
                     <Dropdown
                       menu={{
                         items: [
-                          { key: "rename", label: "Rename", onClick: () => openRenameModal(session.id) },
-                          { key: "delete", label: "Delete", onClick: () => archiveLocalSession(session.id) }
+                          { key: "rename", label: t("actions.rename"), onClick: () => openRenameModal(session.id) },
+                          { key: "archive", label: t("actions.archive"), onClick: () => archiveLocalSession(session.id) }
                         ]
                       }}
                       placement="bottomRight"
@@ -1158,7 +1227,7 @@ const [draftThinking, setDraftThinking] = useState("");
             {archivedSessions.length > 0 ? (
               <div className="archived-sessions">
                 <div className="session-section-heading">
-                  <span>Archived</span>
+                  <span>{t("sidebar.archived")}</span>
                   <small>{archivedSessions.length}</small>
                 </div>
                 {archivedSessions.map((session) => (
@@ -1170,7 +1239,7 @@ const [draftThinking, setDraftThinking] = useState("");
                       onClick={() => restoreLocalSession(session.id)}
                     >
                       <span>{session.title}</span>
-                      <small>Archived · restore</small>
+                      <small>{t("session.archivedRestore")}</small>
                     </button>
                   </div>
                 ))}
@@ -1180,6 +1249,7 @@ const [draftThinking, setDraftThinking] = useState("");
 
           <PiSessionSection
             isStreaming={isStreaming}
+            locale={locale}
             selectedSessionId={activePanelView.kind === "pi" ? activePanelView.sessionId : null}
             onSelectSession={(sessionId) => {
               void selectPiSession(sessionId);
@@ -1197,7 +1267,7 @@ const [draftThinking, setDraftThinking] = useState("");
             className="sidebar-expand-btn"
             type="button"
             onClick={() => setSidebarCollapsed(false)}
-            title="Expand sidebar"
+            title={t("sidebar.expand")}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="9 18 15 12 9 6"/>
@@ -1206,32 +1276,37 @@ const [draftThinking, setDraftThinking] = useState("");
         )}
 
         {panelMode === "terminal" ? (
-          <section className="chat-panel" aria-label="Terminal">
+          <section className="chat-panel" aria-label={t("panel.terminal")}>
             <header className="chat-header">
               <div className="chat-header-copy">
-                <span className="chat-header-title">Terminal</span>
+                <span className="chat-header-title">{t("panel.terminal")}</span>
                 <small className="chat-header-meta">{terminalCwd}</small>
               </div>
             </header>
             {activePanelView.kind === "pi" && !piSessionDetail ? (
               <div className="messages messages-empty">
                 <div className="empty-state">
-                  <h3>Loading terminal…</h3>
-                  <p>Fetching Pi session details to launch in terminal mode.</p>
+                  <h3>{t("panel.loadingTerminalTitle")}</h3>
+                  <p>{t("panel.loadingTerminalBody")}</p>
                 </div>
               </div>
             ) : (
-            <TerminalPanel cwd={terminalCwd} initialCommand={terminalInitialCommand} sessionId={activePanelView.kind === "pi" ? activePanelView.sessionId : activeSessionId} />
+              <TerminalPanel
+                cwd={terminalCwd}
+                initialCommand={terminalInitialCommand}
+                locale={locale}
+                sessionId={activePanelView.kind === "pi" ? activePanelView.sessionId : activeSessionId}
+              />
             )}
           </section>
         ) : (
-        <section className="chat-panel" aria-label="Agent conversation">
+        <section className="chat-panel" aria-label={t("chat.agentDialogue")}>
           <header className="chat-header">
             <div className="chat-header-copy">
               <span className="chat-header-title">{panelTitle}</span>
               {panelMeta ? <small className="chat-header-meta">{panelMeta}</small> : null}
             </div>
-            {isPiHistoryView ? <span className="chat-mode-pill">Pi Session</span> : null}
+            {isPiHistoryView ? <span className="chat-mode-pill">{t("panel.piSessionPill")}</span> : null}
           </header>
 
           {isPiHistoryView ? (
@@ -1247,7 +1322,7 @@ const [draftThinking, setDraftThinking] = useState("");
                         void selectPiSession(activePanelView.sessionId);
                       }}
                     >
-                      Retry
+                      {t("panel.retry")}
                     </button>
                   ) : null}
                 </div>
@@ -1255,15 +1330,15 @@ const [draftThinking, setDraftThinking] = useState("");
             ) : !piSessionDetail ? (
               <div className="messages messages-empty">
                 <div className="empty-state">
-                  <h3>Loading Pi session history…</h3>
-                  <p>Fetching the active branch from your local Pi session store.</p>
+                  <h3>{t("sidebar.loadingPiSessionTitle")}</h3>
+                  <p>{t("sidebar.loadingPiSessionBody")}</p>
                 </div>
               </div>
             ) : piHistoryBubbleItems.length === 0 ? (
               <div className="messages messages-empty">
                 <div className="empty-state">
-                  <h3>New Pi session.</h3>
-                  <p>Start a new conversation in this project by typing a message below.</p>
+                  <h3>{t("session.newPiTitle")}</h3>
+                  <p>{t("session.newPiBody")}</p>
                 </div>
               </div>
             ) : (
@@ -1280,11 +1355,8 @@ const [draftThinking, setDraftThinking] = useState("");
           ) : localBubbleItems.length === 0 ? (
             <div className="messages messages-empty">
               <div className="empty-state">
-                <h3>Start with a task or question.</h3>
-                <p>
-                  Try asking for a product plan, code review checklist, deployment runbook, or
-                  implementation strategy.
-                </p>
+                <h3>{t("sidebar.startTitle")}</h3>
+                <p>{t("sidebar.startBody")}</p>
               </div>
               {error && <div className="error-banner">{error}</div>}
             </div>
@@ -1306,10 +1378,10 @@ const [draftThinking, setDraftThinking] = useState("");
                 <img alt={selectedImage.name} src={getImageDataUrl(selectedImage)} />
                 <div>
                   <strong>{selectedImage.name}</strong>
-                  <span>{Math.ceil(selectedImage.size / 1024)} KB · image analysis</span>
+                  <span>{t("composer.attachmentMeta", { size: Math.ceil(selectedImage.size / 1024) })}</span>
                 </div>
                 <button type="button" onClick={() => setSelectedImage(null)}>
-                  Remove
+                  {t("composer.remove")}
                 </button>
               </div>
             ) : null}
@@ -1323,7 +1395,7 @@ const [draftThinking, setDraftThinking] = useState("");
             <Suggestion<SlashSuggestionInfo>
               block
               className="slash-command-suggestion"
-              items={getSlashSuggestionItems}
+              items={(info) => getSlashSuggestionItems(t, info)}
               onSelect={handleSlashSelect}
             >
               {({ onKeyDown, onTrigger }) => (
@@ -1352,8 +1424,8 @@ const [draftThinking, setDraftThinking] = useState("");
                   onSubmit={submitMessage}
                   placeholder={
                     isPiHistoryView
-                      ? "Continue this Pi session..."
-                      : "Ask the agent to reason, plan, or draft..."
+                      ? t("composer.continuePiSession")
+                      : t("composer.placeholder")
                   }
                   submitType="enter"
                   value={input}
@@ -1367,14 +1439,14 @@ const [draftThinking, setDraftThinking] = useState("");
       <Modal
         centered
         open={isSettingsOpen}
-        title="Settings"
+        title={t("settings.title")}
         footer={
           <div className="settings-footer">
             <button className="settings-btn settings-btn-cancel" type="button" onClick={handleSettingsCancel}>
-              取消
+              {t("settings.cancel")}
             </button>
             <button className="settings-btn settings-btn-confirm" type="button" onClick={handleSettingsConfirm}>
-              确认
+              {t("settings.confirm")}
             </button>
           </div>
         }
@@ -1382,7 +1454,7 @@ const [draftThinking, setDraftThinking] = useState("");
       >
         <div className="settings-modal-content">
           <label className="field">
-            <span>Model</span>
+            <span>{t("settings.model")}</span>
             <select value={settingsDraft.modelKey} onChange={(event) => setSettingsDraft((prev) => ({ ...prev, modelKey: event.target.value }))}>
               {modelOptions.map((preset) => (
                 <option key={getModelKey(preset.provider, preset.model)} value={getModelKey(preset.provider, preset.model)}>
@@ -1393,18 +1465,33 @@ const [draftThinking, setDraftThinking] = useState("");
           </label>
 
           <label className="field">
-            <span>模式</span>
+            <span>{t("settings.language")}</span>
+            <select
+              value={settingsDraft.locale}
+              onChange={(event) => setSettingsDraft((prev) => ({ ...prev, locale: event.target.value as Locale }))}
+            >
+              {localeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <small className="field-note">{t("settings.languageHelp")}</small>
+          </label>
+
+          <label className="field">
+            <span>{t("settings.panelMode")}</span>
             <select
               value={settingsDraft.panelMode}
               onChange={(event) => setSettingsDraft((prev) => ({ ...prev, panelMode: event.target.value as PanelMode }))}
             >
-              <option value="chat">对话模式</option>
-              <option value="terminal">终端模式</option>
+              <option value="chat">{t("settings.chatMode")}</option>
+              <option value="terminal">{t("settings.terminalMode")}</option>
             </select>
           </label>
 
           <label className="field">
-            <span>System prompt</span>
+            <span>{t("settings.systemPrompt")}</span>
             <textarea
               value={settingsDraft.systemPrompt}
               rows={7}
@@ -1417,16 +1504,16 @@ const [draftThinking, setDraftThinking] = useState("");
       <Modal
         centered
         open={renameTargetId !== null}
-        title="Rename session"
-        okText="Rename"
-        cancelText="Cancel"
+        title={t("session.renameTitle")}
+        okText={t("actions.rename")}
+        cancelText={t("settings.cancel")}
         onOk={() => { void confirmRename(); }}
         onCancel={closeRenameModal}
       >
         <Input
           autoFocus
           value={renameDraft}
-          placeholder="Session name"
+          placeholder={t("session.renamePlaceholder")}
           onChange={(event) => setRenameDraft(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") void confirmRename();

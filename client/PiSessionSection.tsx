@@ -1,26 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Dropdown from "antd/es/dropdown";
 import Modal from "antd/es/modal";
 import type { MenuProps } from "antd";
+import {
+  createTranslator,
+  formatMessageCount,
+  formatRelativeTime,
+  type Locale,
+  type Translator
+} from "./i18n";
 import type { PiSessionProject } from "./types";
-
-function relativeTime(isoString: string): string {
-  const date = new Date(isoString);
-  const now = Date.now();
-  const diffMs = now - date.getTime();
-  const diffMin = Math.floor(diffMs / 60_000);
-  const diffHr = Math.floor(diffMs / 3_600_000);
-  const diffDay = Math.floor(diffMs / 86_400_000);
-
-  if (diffMin < 1) return "just now";
-  if (diffMin < 60) return `${diffMin}m ago`;
-  if (diffHr < 24) return `${diffHr}h ago`;
-  if (diffDay < 7) return `${diffDay}d ago`;
-  return date.toLocaleDateString();
-}
 
 interface PiSessionSectionProps {
   isStreaming: boolean;
+  locale: Locale;
   selectedSessionId: string | null;
   onSelectSession: (sessionId: string) => void;
   onRename: (sessionId: string) => void;
@@ -35,15 +28,16 @@ function buildMenuItems(
   isArchived: boolean,
   onRename: (id: string) => void,
   onArchive: (id: string) => void,
-  onRestore: (id: string) => void
+  onRestore: (id: string) => void,
+  t: Translator
 ): MenuProps["items"] {
   if (isArchived) {
-    return [{ key: "restore", label: "Restore", onClick: () => onRestore(sessionKey) }];
+    return [{ key: "restore", label: t("actions.restore"), onClick: () => onRestore(sessionKey) }];
   }
 
   return [
-    { key: "rename", label: "Rename", onClick: () => onRename(sessionKey) },
-    { key: "delete", label: "Delete", onClick: () => onArchive(sessionKey) }
+    { key: "rename", label: t("actions.rename"), onClick: () => onRename(sessionKey) },
+    { key: "archive", label: t("actions.archive"), onClick: () => onArchive(sessionKey) }
   ];
 }
 
@@ -85,6 +79,7 @@ function sortProjectsByOrder(
 
 export function PiSessionSection({
   isStreaming,
+  locale,
   selectedSessionId,
   onSelectSession,
   onRename,
@@ -106,6 +101,7 @@ export function PiSessionSection({
   const [workspaceResolvedPath, setWorkspaceResolvedPath] = useState<string | null>(null);
   const [workspaceResolving, setWorkspaceResolving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const t = useMemo(() => createTranslator(locale), [locale]);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,7 +122,7 @@ export function PiSessionSection({
         setProjects(orderedProjects);
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load Pi sessions");
+          setError(err instanceof Error ? err.message : t("sidebar.piCliUnavailable"));
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -172,7 +168,7 @@ export function PiSessionSection({
         onSelectSession(targetProject.sessions[0].id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create session");
+      setError(err instanceof Error ? err.message : t("workspace.newPiSession"));
     }
   }
 
@@ -280,7 +276,7 @@ export function PiSessionSection({
         setError(body.error || `Could not find directory "${folderName}"`);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to resolve directory");
+      setError(err instanceof Error ? err.message : t("workspace.resolving"));
     } finally {
       setWorkspaceResolving(false);
     }
@@ -312,7 +308,7 @@ export function PiSessionSection({
 
       closeWorkspaceModal();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create workspace");
+      setError(err instanceof Error ? err.message : t("workspace.title"));
     }
   }
 
@@ -324,9 +320,9 @@ export function PiSessionSection({
     return (
       <div className="pi-sessions-section">
         <div className="session-section-heading">
-          <span>Pi Sessions</span>
+          <span>{t("sidebar.piSessions")}</span>
         </div>
-        <div className="pi-sessions-error">Pi CLI not available</div>
+        <div className="pi-sessions-error">{t("sidebar.piCliUnavailable")}</div>
       </div>
     );
   }
@@ -335,9 +331,9 @@ export function PiSessionSection({
     return (
       <div className="pi-sessions-section">
         <div className="session-section-heading">
-          <span>Pi Sessions</span>
+          <span>{t("sidebar.piSessions")}</span>
         </div>
-        <div className="pi-sessions-empty">No Pi sessions found</div>
+        <div className="pi-sessions-empty">{t("workspace.noneFound")}</div>
       </div>
     );
   }
@@ -347,131 +343,132 @@ export function PiSessionSection({
   return (
     <>
       <div className="pi-sessions-section">
-      <div className="session-section-heading">
-        <span>Pi Sessions</span>
-        <div className="sidebar-actions">
-          <button
-            className="icon-button"
-            disabled={isStreaming}
-            type="button"
-            title="Add workspace"
-            onClick={openWorkspaceModal}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-            </svg>
-          </button>
-        </div>
-        <small>{totalSessions}</small>
-      </div>
-
-      <div className="pi-sessions-list">
-        {projects.map((project) => {
-          const isExpanded = expandedProjects.has(project.path);
-          const isDragOver = dragOverProjectPath === project.path;
-          const visibleSessions = project.sessions.filter(
-            (s) => !archivedSessionIds.has(s.id)
-          );
-
-          return (
-            <div
-              className={
-                "pi-project-group" +
-                (isDragOver ? " pi-project-group-drag-over" : "")
-              }
-              key={project.path}
-              draggable={!isStreaming}
-              onDragStart={() => handleProjectDragStart(project.path)}
-              onDragOver={(e) => handleProjectDragOver(e, project.path)}
-              onDragLeave={handleProjectDragLeave}
-              onDrop={() => handleProjectDrop(project.path)}
-              onDragEnd={handleProjectDragEnd}
+        <div className="session-section-heading">
+          <span>{t("sidebar.piSessions")}</span>
+          <div className="sidebar-actions">
+            <button
+              className="icon-button"
+              disabled={isStreaming}
+              type="button"
+              title={t("sidebar.addWorkspace")}
+              onClick={openWorkspaceModal}
             >
-              <div className="pi-project-header-row">
-                <button
-                  className="pi-project-header"
-                  disabled={isStreaming}
-                  type="button"
-                  onClick={() => toggleProject(project.path)}
-                >
-                  <span className="pi-project-name">{project.name}</span>
-                  <small className="pi-project-count">{project.sessions.length}</small>
-                </button>
-                <button
-                  className="pi-new-session-btn"
-                  disabled={isStreaming}
-                  type="button"
-                  title="New Pi session in this project"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void handleNewSession(project.path);
-                  }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19"/>
-                    <line x1="5" y1="12" x2="19" y2="12"/>
-                  </svg>
-                </button>
-              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
+            </button>
+          </div>
+          <small>{totalSessions}</small>
+        </div>
 
-              {isExpanded && (
-                <div className="pi-session-list">
-                  {visibleSessions.map((session) => {
-                    const isArchived = archivedSessionIds.has(session.id);
+        <div className="pi-sessions-list">
+          {projects.map((project) => {
+            const isExpanded = expandedProjects.has(project.path);
+            const isDragOver = dragOverProjectPath === project.path;
+            const visibleSessions = project.sessions.filter(
+              (session) => !archivedSessionIds.has(session.id)
+            );
 
-                    return (
-                      <button
-                        className={
-                          "pi-session-row" +
-                          (selectedSessionId === session.id
-                            ? " pi-session-row-active"
-                            : "") +
-                          (isArchived ? " pi-session-row-archived" : "")
-                        }
-                        key={session.id}
-                        disabled={isStreaming}
-                        type="button"
-                        onClick={() => onSelectSession(session.id)}
-                      >
-                        <div className="pi-session-info">
-                          <span className="pi-session-first-msg">
-                            {session.name || session.firstMessage}
-                          </span>
-                          <small className="pi-session-meta">
-                            {session.messageCount} messages · {relativeTime(session.modified)}
-                          </small>
-                        </div>
-                        <span className="pi-session-menu-trigger" onClick={stopPropagation}>
-                          <Dropdown
-                            menu={{
-                              items: buildMenuItems(
-                                session.id,
-                                isArchived,
-                                onRename,
-                                onArchive,
-                                onRestore
-                              )
-                            }}
-                            placement="bottomRight"
-                            trigger={["click"]}
-                          >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                              <circle cx="12" cy="5" r="2"/>
-                              <circle cx="12" cy="12" r="2"/>
-                              <circle cx="12" cy="19" r="2"/>
-                            </svg>
-                          </Dropdown>
-                        </span>
-                      </button>
-                    );
-                  })}
+            return (
+              <div
+                className={
+                  "pi-project-group" +
+                  (isDragOver ? " pi-project-group-drag-over" : "")
+                }
+                key={project.path}
+                draggable={!isStreaming}
+                onDragStart={() => handleProjectDragStart(project.path)}
+                onDragOver={(e) => handleProjectDragOver(e, project.path)}
+                onDragLeave={handleProjectDragLeave}
+                onDrop={() => handleProjectDrop(project.path)}
+                onDragEnd={handleProjectDragEnd}
+              >
+                <div className="pi-project-header-row">
+                  <button
+                    className="pi-project-header"
+                    disabled={isStreaming}
+                    type="button"
+                    onClick={() => toggleProject(project.path)}
+                  >
+                    <span className="pi-project-name">{project.name}</span>
+                    <small className="pi-project-count">{project.sessions.length}</small>
+                  </button>
+                  <button
+                    className="pi-new-session-btn"
+                    disabled={isStreaming}
+                    type="button"
+                    title={t("workspace.newPiSession")}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleNewSession(project.path);
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="12" y1="5" x2="12" y2="19"/>
+                      <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                  </button>
                 </div>
-              )}
-            </div>
-          );
-        })}
+
+                {isExpanded && (
+                  <div className="pi-session-list">
+                    {visibleSessions.map((session) => {
+                      const isArchived = archivedSessionIds.has(session.id);
+
+                      return (
+                        <button
+                          className={
+                            "pi-session-row" +
+                            (selectedSessionId === session.id
+                              ? " pi-session-row-active"
+                              : "") +
+                            (isArchived ? " pi-session-row-archived" : "")
+                          }
+                          key={session.id}
+                          disabled={isStreaming}
+                          type="button"
+                          onClick={() => onSelectSession(session.id)}
+                        >
+                          <div className="pi-session-info">
+                            <span className="pi-session-first-msg">
+                              {session.name || session.firstMessage}
+                            </span>
+                            <small className="pi-session-meta">
+                              {formatMessageCount(locale, session.messageCount)} · {formatRelativeTime(locale, session.modified)}
+                            </small>
+                          </div>
+                          <span className="pi-session-menu-trigger" onClick={stopPropagation}>
+                            <Dropdown
+                              menu={{
+                                items: buildMenuItems(
+                                  session.id,
+                                  isArchived,
+                                  onRename,
+                                  onArchive,
+                                  onRestore,
+                                  t
+                                )
+                              }}
+                              placement="bottomRight"
+                              trigger={["click"]}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                <circle cx="12" cy="5" r="2"/>
+                                <circle cx="12" cy="12" r="2"/>
+                                <circle cx="12" cy="19" r="2"/>
+                              </svg>
+                            </Dropdown>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
-    </div>
 
       <input
         ref={fileInputRef}
@@ -484,20 +481,18 @@ export function PiSessionSection({
       <Modal
         centered
         open={workspaceModalOpen}
-        title="Add workspace"
+        title={t("workspace.title")}
         footer={
           <div className="workspace-modal-footer">
             <button className="settings-btn settings-btn-cancel" type="button" onClick={closeWorkspaceModal}>
-              Cancel
+              {t("settings.cancel")}
             </button>
           </div>
         }
         onCancel={closeWorkspaceModal}
       >
         <div className="workspace-modal-body">
-          <p className="workspace-description">
-            Select a project folder to create a new workspace in it.
-          </p>
+          <p className="workspace-description">{t("workspace.description")}</p>
 
           <div className="workspace-browse-row">
             <button
@@ -508,10 +503,10 @@ export function PiSessionSection({
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
               </svg>
-              Browse…
+              {t("workspace.browse")}
             </button>
             {workspaceResolving && (
-              <span className="workspace-resolving-label">Resolving path…</span>
+              <span className="workspace-resolving-label">{t("workspace.resolving")}</span>
             )}
             {workspaceResolvedPath && !workspaceResolving && (
               <span className="workspace-resolved-label">

@@ -2,11 +2,13 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef } from "react";
+import { createTranslator, type Locale } from "./i18n";
 
 interface TerminalPanelProps {
   cwd: string;
   sessionId?: string;
   initialCommand?: string;
+  locale: Locale;
 }
 
 function getWebSocketUrl(cwd: string, cmd?: string): string {
@@ -18,10 +20,11 @@ function getWebSocketUrl(cwd: string, cmd?: string): string {
   return url;
 }
 
-export function TerminalPanel({ cwd, initialCommand }: TerminalPanelProps) {
+export function TerminalPanel({ cwd, initialCommand, locale }: TerminalPanelProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const t = createTranslator(locale);
 
   useEffect(() => {
     if (!terminalRef.current) return;
@@ -102,7 +105,7 @@ export function TerminalPanel({ cwd, initialCommand }: TerminalPanelProps) {
 
       ws.onclose = () => {
         if (closed) return;
-        term.write("\r\n\x1b[31m[Connection closed. Refresh or switch sessions to reconnect.]\x1b[0m\r\n");
+        term.write(`\r\n\x1b[31m${t("terminal.connectionClosed")}\x1b[0m\r\n`);
       };
 
       ws.onerror = () => {
@@ -144,7 +147,7 @@ export function TerminalPanel({ cwd, initialCommand }: TerminalPanelProps) {
       term.dispose();
       fitAddonRef.current = null;
     };
-  }, [cwd, initialCommand]);
+  }, [cwd, initialCommand, t]);
 
   return <div ref={terminalRef} className="terminal-panel" />;
 }
