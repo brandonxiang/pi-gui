@@ -24,7 +24,11 @@ export function TerminalPanel({ cwd, initialCommand, locale }: TerminalPanelProp
   const terminalRef = useRef<HTMLDivElement>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const t = createTranslator(locale);
+  const connectionClosedMessageRef = useRef(createTranslator(locale)("terminal.connectionClosed"));
+
+  useEffect(() => {
+    connectionClosedMessageRef.current = createTranslator(locale)("terminal.connectionClosed");
+  }, [locale]);
 
   useEffect(() => {
     if (!terminalRef.current) return;
@@ -105,7 +109,7 @@ export function TerminalPanel({ cwd, initialCommand, locale }: TerminalPanelProp
 
       ws.onclose = () => {
         if (closed) return;
-        term.write(`\r\n\x1b[31m${t("terminal.connectionClosed")}\x1b[0m\r\n`);
+        term.write(`\r\n\x1b[31m${connectionClosedMessageRef.current}\x1b[0m\r\n`);
       };
 
       ws.onerror = () => {
@@ -147,7 +151,7 @@ export function TerminalPanel({ cwd, initialCommand, locale }: TerminalPanelProp
       term.dispose();
       fitAddonRef.current = null;
     };
-  }, [cwd, initialCommand, t]);
+  }, [cwd, initialCommand]);
 
   return <div ref={terminalRef} className="terminal-panel" />;
 }
