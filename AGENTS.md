@@ -55,3 +55,5 @@ npm run build
 ```
 
 For UI changes, also start `npm run dev` and verify the page in a browser.
+Default to using `agent-browser` for browser-based verification unless the user
+explicitly requests a different verification approach.

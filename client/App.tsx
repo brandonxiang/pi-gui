@@ -454,7 +454,7 @@ function getSlashSuggestionItems(
         </div>
       ),
       value: `/${command.name}`,
-      extra: <span className="slash-command-source">pi</span>
+      extra: <span className="slash-command-source slash-command-badge-pi">pi</span>
     })),
     ...matchedSkills.map((skill) => ({
       label: (

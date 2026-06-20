@@ -1410,10 +1410,32 @@ h2 {
   min-width: 100% !important;
 }
 
+.slash-command-suggestion .ant-cascader-menu {
+  width: 100%;
+  min-width: 0;
+}
+
+.slash-command-suggestion .ant-cascader-menu-item {
+  max-width: none;
+}
+
+.slash-command-suggestion .ant-suggestion-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+.slash-command-suggestion .ant-suggestion-item-extra {
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
 .slash-command-option {
   display: flex;
   align-items: center;
-  min-width: 240px;
+  flex: 1 1 auto;
+  min-width: 0;
   gap: 6px;
   padding: 2px 8px;
 }
@@ -1449,6 +1471,12 @@ h2 {
   text-transform: uppercase;
   flex-shrink: 0;
   letter-spacing: 0.04em;
+}
+
+.slash-command-badge-pi {
+  color: #0b63c8;
+  background: rgba(11, 99, 200, 0.08);
+  border: 1px solid rgba(11, 99, 200, 0.16);
 }
 
 .slash-command-badge-skill {
