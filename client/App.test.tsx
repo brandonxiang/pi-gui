@@ -29,7 +29,8 @@ const mockState = vi.hoisted(() => ({
         };
         messages: [];
       }
-    | null
+    | null,
+  pendingChatPromise: null as Promise<unknown> | null
 }));
 
 vi.mock("@ant-design/x/es/x-provider", () => ({
@@ -53,21 +54,41 @@ vi.mock("@ant-design/x/es/sender", () => ({
     onChange,
     onKeyDown,
     placeholder,
-    disabled
+    disabled,
+    onSubmit,
+    loading
   }: {
     value: string;
     onChange: (value: string) => void;
     onKeyDown?: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
     placeholder?: string;
     disabled?: boolean;
+    onSubmit?: (value: string) => void;
+    loading?: boolean;
   }) => (
-    <textarea
-      aria-label={placeholder || "sender"}
-      disabled={disabled}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      onKeyDown={onKeyDown}
-    />
+    <div data-loading={loading ? "true" : "false"}>
+      <textarea
+        aria-label={placeholder || "sender"}
+        disabled={disabled}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          onKeyDown?.(event);
+          if (event.defaultPrevented) return;
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            onSubmit?.(value);
+          }
+        }}
+      />
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => onSubmit?.(value)}
+      >
+        Submit
+      </button>
+    </div>
   )
 }));
 
@@ -180,6 +201,15 @@ async function flushEffects() {
   });
 }
 
+function setTextareaValue(textarea: HTMLTextAreaElement, value: string) {
+  const descriptor = Object.getOwnPropertyDescriptor(
+    HTMLTextAreaElement.prototype,
+    "value"
+  );
+  descriptor?.set?.call(textarea, value);
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 function seedSelectedPiSession() {
   mockState.projects = [
     {
@@ -231,6 +261,7 @@ describe("App sidebar shortcut", () => {
   beforeEach(() => {
     mockState.projects = [];
     mockState.sessionDetail = null;
+    mockState.pendingChatPromise = null;
     localStorage.clear();
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -249,6 +280,15 @@ describe("App sidebar shortcut", () => {
       }
       if (url.includes("/api/pi-sessions/")) {
         return createJsonResponse(mockState.sessionDetail);
+      }
+      if (url.endsWith("/api/chat/steer")) {
+        return createJsonResponse({ ok: true });
+      }
+      if (url.endsWith("/api/chat")) {
+        if (mockState.pendingChatPromise) {
+          return mockState.pendingChatPromise;
+        }
+        return createJsonResponse({});
       }
 
       throw new Error(`Unhandled fetch: ${url}`);
@@ -351,5 +391,152 @@ describe("App sidebar shortcut", () => {
     });
 
     expect(shell?.className).not.toContain("app-shell-collapsed");
+  });
+
+  it("queues a following-up message and clears the composer during streaming", async () => {
+    seedSelectedPiSession();
+    mockState.pendingChatPromise = new Promise((resolve) => {
+      void resolve;
+    });
+
+    await act(async () => {
+      root.render(<App />);
+    });
+    await flushEffects();
+    await flushEffects();
+
+    const composer = container.querySelector("textarea");
+    const submitButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Submit"
+    );
+
+    expect(composer).toBeInstanceOf(HTMLTextAreaElement);
+    expect(submitButton).toBeInstanceOf(HTMLButtonElement);
+
+    await act(async () => {
+      setTextareaValue(composer as HTMLTextAreaElement, "First prompt");
+    });
+
+    await act(async () => {
+      submitButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect((composer as HTMLTextAreaElement).disabled).toBe(false);
+
+    await act(async () => {
+      setTextareaValue(composer as HTMLTextAreaElement, "Second prompt");
+    });
+
+    await act(async () => {
+      submitButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect((composer as HTMLTextAreaElement).value).toBe("");
+    expect(container.textContent).toContain("Following up");
+    expect(container.textContent).toContain("Second prompt");
+  });
+
+  it("sends steering immediately from Cmd+Enter and shows it as active steering", async () => {
+    seedSelectedPiSession();
+    mockState.pendingChatPromise = new Promise((resolve) => {
+      void resolve;
+    });
+
+    await act(async () => {
+      root.render(<App />);
+    });
+    await flushEffects();
+    await flushEffects();
+
+    const composer = container.querySelector("textarea");
+    const submitButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Submit"
+    );
+
+    expect(composer).toBeInstanceOf(HTMLTextAreaElement);
+    expect(submitButton).toBeInstanceOf(HTMLButtonElement);
+
+    await act(async () => {
+      setTextareaValue(composer as HTMLTextAreaElement, "First prompt");
+    });
+
+    await act(async () => {
+      submitButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    await act(async () => {
+      setTextareaValue(composer as HTMLTextAreaElement, "Steer now");
+    });
+
+    await act(async () => {
+      composer?.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Enter",
+        metaKey: true,
+        bubbles: true,
+        cancelable: true
+      }));
+    });
+
+    expect((composer as HTMLTextAreaElement).value).toBe("");
+    expect(container.textContent).toContain("Active Steering");
+    expect(container.textContent).toContain("Steer now");
+    expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).endsWith("/api/chat/steer"))).toBe(true);
+  });
+
+  it("removes any queued following-up message from the sender queue", async () => {
+    seedSelectedPiSession();
+    mockState.pendingChatPromise = new Promise((resolve) => {
+      void resolve;
+    });
+
+    await act(async () => {
+      root.render(<App />);
+    });
+    await flushEffects();
+    await flushEffects();
+
+    const composer = container.querySelector("textarea");
+    const submitButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Submit"
+    );
+
+    expect(composer).toBeInstanceOf(HTMLTextAreaElement);
+    expect(submitButton).toBeInstanceOf(HTMLButtonElement);
+
+    await act(async () => {
+      setTextareaValue(composer as HTMLTextAreaElement, "First prompt");
+    });
+    await act(async () => {
+      submitButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    await act(async () => {
+      setTextareaValue(composer as HTMLTextAreaElement, "Second prompt");
+    });
+    await act(async () => {
+      submitButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    await act(async () => {
+      setTextareaValue(composer as HTMLTextAreaElement, "Third prompt");
+    });
+    await act(async () => {
+      submitButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(container.textContent).toContain("Second prompt");
+    expect(container.textContent).toContain("Third prompt");
+
+    const removeThirdButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.getAttribute("aria-label") === "Remove queued follow-up: Third prompt"
+    );
+    expect(removeThirdButton).toBeInstanceOf(HTMLButtonElement);
+
+    await act(async () => {
+      removeThirdButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(container.textContent).toContain("Second prompt");
+    expect(container.textContent).not.toContain("Third prompt");
   });
 });

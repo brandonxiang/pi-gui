@@ -115,3 +115,9 @@ export interface PiSessionDetailResponse {
   session: PiSessionDetail;
   messages: PiHistoryMessage[];
 }
+
+export interface ContextUsage {
+  tokens: number | null;
+  contextWindow: number;
+  percent: number | null;
+}

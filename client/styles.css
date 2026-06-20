@@ -803,9 +803,127 @@ h2 {
 }
 
 .messages {
+  position: relative;
   min-height: 0;
   overflow: hidden;
   background: var(--canvas);
+}
+
+/* ── minimap ── */
+
+.minimap-track {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 20px;
+  cursor: pointer;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.messages:hover .minimap-track,
+.minimap-track:hover {
+  opacity: 1;
+}
+
+.minimap-track:hover {
+  background: rgba(128, 128, 128, 0.04);
+}
+
+.minimap-body {
+  position: relative;
+  height: 100%;
+  padding: 20px 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.minimap-line {
+  position: absolute;
+  left: 50%;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  transform: translateX(-50%);
+  border-radius: 1px;
+  background: var(--hairline);
+}
+
+.minimap-dot {
+  position: relative;
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  transition: background 0.15s, transform 0.15s;
+  z-index: 1;
+}
+
+.minimap-dot-past {
+  background: var(--ink-muted);
+}
+
+.minimap-dot-active {
+  width: 7px;
+  height: 7px;
+  background: var(--primary);
+  transform: scale(1.2);
+}
+
+.minimap-dot-hovered {
+  width: 7px;
+  height: 7px;
+  background: var(--primary);
+}
+
+/* ── minimap hover preview ── */
+
+.minimap-preview {
+  position: absolute;
+  right: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  max-width: 260px;
+  padding: 6px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--canvas);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  pointer-events: none;
+  z-index: 20;
+  white-space: nowrap;
+}
+
+.minimap-preview-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.minimap-indicator {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  transform: translateX(-50%);
+  background: var(--primary);
+  animation: minimap-pulse 2s ease-in-out infinite;
+}
+
+@keyframes minimap-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
 }
 
 .messages-empty {
@@ -1310,10 +1428,118 @@ h2 {
   scrollbar-color: #424242 transparent;
 }
 
-.composer {
-  padding: 12px 20px;
-  border-top: 1px solid var(--hairline);
+.context-usage-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 20px 0;
   background: var(--canvas);
+}
+
+.context-usage-label {
+  color: var(--ink-faint);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
+.context-usage-track {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--hairline);
+  overflow: hidden;
+  min-width: 40px;
+}
+
+.context-usage-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--primary);
+  transition: width 0.4s ease;
+}
+
+.context-usage-fill.context-usage-fill-mid {
+  background: #e6a700;
+}
+
+.context-usage-fill.context-usage-fill-high {
+  background: #e04040;
+}
+
+.context-usage-percent {
+  color: var(--ink-faint);
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 32px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.composer {
+  padding: 8px 20px 12px;
+  background: var(--canvas);
+}
+
+.composer-queue-header {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--canvas-soft);
+}
+
+.composer-queue-title {
+  margin-bottom: 4px;
+  color: var(--ink-faint);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.composer-queue-preview {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.composer-queue-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.composer-queue-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+  color: var(--ink-secondary);
+  font-size: 13px;
+}
+
+.composer-queue-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-queue-item button {
+  border: 0;
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.composer-queue-item button:hover {
+  color: var(--primary);
 }
 
 .pi-history-footer {

@@ -15,6 +15,7 @@ import {
   SessionManager,
   SettingsManager,
   type AgentSession,
+  type ContextUsage,
   type ResourceLoader
 } from "@earendil-works/pi-coding-agent";
 import {
@@ -563,6 +564,55 @@ async function buildServer() {
     }
   });
 
+  server.get("/api/sessions/:sessionId/context-usage", async (request, reply) => {
+    const { sessionId } = request.params as { sessionId?: string };
+    if (!sessionId?.trim()) {
+      reply.code(400);
+      return { error: "sessionId is required" };
+    }
+
+    try {
+      // Try the cached Pi agent session first (gives real-time usage)
+      const cached = piSessions.get(sessionId);
+      if (cached) {
+        const contextUsage = cached.session.getContextUsage();
+        return { contextUsage: contextUsage ?? null };
+      }
+
+      // Otherwise load from session file and create a temporary session
+      const context = await loadPiSessionContextById(sessionId);
+      if (!context) {
+        reply.code(404);
+        return { error: "Pi session not found" };
+      }
+
+      const { authStorage, modelRegistry } = await createLocalModelRegistry();
+      const model =
+        context.model?.provider && context.model?.modelId
+          ? modelRegistry.find(context.model.provider, context.model.modelId)
+          : undefined;
+
+      const tempSession = await createAgentSession({
+        cwd: context.session.cwd,
+        authStorage,
+        modelRegistry,
+        model,
+        sessionManager: context.sessionManager,
+        settingsManager: SettingsManager.inMemory()
+      });
+
+      const contextUsage = tempSession.session.getContextUsage();
+      tempSession.session.dispose();
+
+      return { contextUsage: contextUsage ?? null };
+    } catch (error) {
+      reply.code(500);
+      return {
+        error: error instanceof Error ? error.message : "Failed to get context usage"
+      };
+    }
+  });
+
   server.post("/api/pi-local-actions", async (request, reply) => {
     const body = request.body as LocalActionRequest;
     const piSessionId = request.headers["x-pi-session-id"] as string | undefined;
@@ -818,6 +868,57 @@ async function buildServer() {
       });
     } finally {
       raw.end();
+    }
+  });
+
+  server.post("/api/chat/steer", async (request, reply) => {
+    const body = request.body as ChatRequest;
+    const requestedProvider = body.provider;
+    const requestedModelId = body.model;
+    const piSessionId = request.headers["x-pi-session-id"] as string | undefined;
+    let images: ImageContent[];
+
+    try {
+      images = parseImages(body.images);
+    } catch (error) {
+      reply.code(400);
+      return {
+        error: error instanceof Error ? error.message : "Invalid image attachment"
+      };
+    }
+
+    const prompt = getPromptOrDefault(body.prompt, images);
+    if (!piSessionId?.trim()) {
+      reply.code(400);
+      return { error: "Pi session id is required" };
+    }
+    if (!prompt) {
+      reply.code(400);
+      return { error: "prompt is required" };
+    }
+
+    try {
+      const persistedSession = await createPersistedPiSession(
+        piSessionId,
+        requestedProvider,
+        requestedModelId
+      );
+
+      if (!persistedSession) {
+        reply.code(404);
+        return { error: "Pi session not found" };
+      }
+
+      await persistedSession.session.steer(
+        prompt,
+        images.length > 0 ? images : undefined
+      );
+      return { ok: true };
+    } catch (error) {
+      reply.code(500);
+      return {
+        error: error instanceof Error ? error.message : "Failed to steer Pi session"
+      };
     }
   });
 

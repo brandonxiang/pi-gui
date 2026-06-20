@@ -1,10 +1,11 @@
-import { Suspense, lazy, type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import Dropdown from "antd/es/dropdown";
 import Input from "antd/es/input";
 import Modal from "antd/es/modal";
 import Select from "antd/es/select";
 import Tabs from "antd/es/tabs";
 import Bubble, { type BubbleItemType, type BubbleListProps } from "@ant-design/x/es/bubble";
+import Minimap from "./Minimap";
 import Sender from "@ant-design/x/es/sender";
 import Suggestion, { type SuggestionItem } from "@ant-design/x/es/suggestion";
 import XProvider from "@ant-design/x/es/x-provider";
@@ -30,6 +31,7 @@ import {
 import type {
   AssistantMessage,
   ChatMessage,
+  ContextUsage,
   ImageAttachment,
   PiHistoryMessage,
   PiSessionProject,
@@ -108,6 +110,15 @@ type ActivePanelView = { kind: "empty" } | { kind: "pi"; sessionId: string };
 type LauncherMode = "new" | "select" | null;
 
 type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+type QueuedComposerMessage = {
+  id: string;
+  content: string;
+};
+type ActiveSteeringMessage = {
+  id: string;
+  content: string;
+};
+type ComposerSubmitMode = "default" | "steering";
 
 const THINKING_LEVEL_STORAGE_KEY = "my-pi-thinking-level";
 const SIDEBAR_SHORTCUT_KEY = "b";
@@ -233,6 +244,12 @@ function isSidebarToggleShortcut(
 
 function hasOpenDialog() {
   return Boolean(document.querySelector('[role="dialog"], .ant-modal-root'));
+}
+
+function isSteeringSubmitShortcut(
+  event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey">
+) {
+  return event.key === "Enter" && (event.metaKey || event.ctrlKey);
 }
 
 function MessageHeader({ label, meta }: { label: string; meta: string }) {
@@ -603,6 +620,8 @@ export default function App() {
   const [piSessionError, setPiSessionError] = useState<string | null>(null);
   const [piSessionLoading, setPiSessionLoading] = useState(false);
   const [draftToolMessages, setDraftToolMessages] = useState<Map<string, { toolName: string; content: string; isError: boolean }>>(new Map());
+  const [activeSteering, setActiveSteering] = useState<ActiveSteeringMessage | null>(null);
+  const [queuedFollowUps, setQueuedFollowUps] = useState<QueuedComposerMessage[]>([]);
   const [launcherMode, setLauncherMode] = useState<LauncherMode>(null);
   const [newSessionQuery, setNewSessionQuery] = useState("");
   const [selectSessionQuery, setSelectSessionQuery] = useState("");
@@ -610,6 +629,9 @@ export default function App() {
   const [workspaceBrowseName, setWorkspaceBrowseName] = useState<string | null>(null);
   const [workspaceResolvedPath, setWorkspaceResolvedPath] = useState<string | null>(null);
   const [workspaceResolving, setWorkspaceResolving] = useState(false);
+  const [scrollContainer, setScrollContainer] = useState<HTMLElement | null>(null);
+  const [messagesEl, setMessagesEl] = useState<HTMLElement | null>(null);
+  const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
   const [skills, setSkills] = useState<Skill[]>([]);
 
   const didHydrateSelectionRef = useRef(false);
@@ -658,6 +680,10 @@ export default function App() {
     isHotkeysOpen ||
     renameTargetId !== null ||
     launcherMode !== null;
+
+  function removeQueuedFollowUp(id: string) {
+    setQueuedFollowUps((current) => current.filter((item) => item.id !== id));
+  }
 
   function clearThinkingFlushTimeout() {
     if (thinkingFlushTimeoutRef.current === null) return;
@@ -739,6 +765,24 @@ export default function App() {
     ];
   }, [draftToolBubbleItems, piHistoryMessages, piLocalMessages, piPendingMessages, streamingAssistantBubbleItem, t, thinkingBubbleItem]);
 
+  const userBubbleCount = useMemo(
+    () => piHistoryBubbleItems.filter((item) => item.role === "user").length,
+    [piHistoryBubbleItems]
+  );
+
+  const userPreviews: string[] = useMemo(() => {
+    const allMessages = [
+      ...piHistoryMessages,
+      ...piLocalMessages,
+      ...piPendingMessages
+    ];
+    return allMessages
+      .filter((m): m is typeof m & { role: "user" } => m.role === "user")
+      .map((m) =>
+        m.content.length > 80 ? m.content.slice(0, 80) + "…" : m.content
+      );
+  }, [piHistoryMessages, piLocalMessages, piPendingMessages]);
+
   const panelTitle = selectedPiSessionId
     ? piSessionDetail?.session.name || t("chat.piSession")
     : t("launcher.title", { workspace: launcherWorkspaceName });
@@ -819,6 +863,40 @@ export default function App() {
     }
   }
 
+  // Sync scroll container ref when messages element mounts
+  useEffect(() => {
+    if (!messagesEl) {
+      setScrollContainer(null);
+      return;
+    }
+    const el = messagesEl.querySelector<HTMLElement>(".ant-bubble-list-scroll-box");
+    setScrollContainer(el);
+  }, [messagesEl]);
+
+  const handleMinimapNavigate = useCallback((userIndex: number) => {
+    if (!scrollContainer) return;
+    const userBubbles = scrollContainer.querySelectorAll<HTMLElement>(
+      ".ant-bubble-list-scroll-content > .chat-bubble-user"
+    );
+    const target = userBubbles[userIndex];
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [scrollContainer]);
+
+  function fetchContextUsage(sessionId: string) {
+    fetch(`/api/sessions/${encodeURIComponent(sessionId)}/context-usage`)
+      .then((res) => {
+        if (!res.ok) return null;
+        return res.json() as Promise<{ contextUsage: ContextUsage | null }>;
+      })
+      .then((data) => {
+        setContextUsage(data?.contextUsage ?? null);
+      })
+      .catch(() => {
+        setContextUsage(null);
+      });
+  }
+
   function clearSelectedPiSession() {
     piSessionRequestIdRef.current += 1;
     setActivePanelView({ kind: "empty" });
@@ -829,6 +907,7 @@ export default function App() {
     setPiPendingMessages([]);
     resetStreamingDraft();
     setError(null);
+    setContextUsage(null);
     localStorage.removeItem(ACTIVE_SESSION_KEY);
     localStorage.removeItem(ACTIVE_PI_PROJECT_KEY);
   }
@@ -849,6 +928,7 @@ export default function App() {
     setError(null);
     resetStreamingDraft();
     setPiPendingMessages([]);
+    setContextUsage(null);
 
     if (options?.persist !== false) {
       const projectPath =
@@ -860,6 +940,7 @@ export default function App() {
       const detail = await loadPiSessionDetail(sessionId);
       if (piSessionRequestIdRef.current !== requestId) return;
       setPiSessionDetail(detail);
+      fetchContextUsage(sessionId);
     } catch (err) {
       if (piSessionRequestIdRef.current !== requestId) return;
       setPiSessionError(err instanceof Error ? err.message : "Failed to load Pi session");
@@ -1302,6 +1383,35 @@ export default function App() {
     return body as PiSessionDetailResponse;
   }
 
+  async function submitSteeringMessage(messageText: string, image: ImageAttachment | null) {
+    if (activePanelView.kind !== "pi") return;
+
+    const response = await fetch("/api/chat/steer", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-pi-session-id": activePanelView.sessionId
+      },
+      body: JSON.stringify({
+        ...selectedModel,
+        prompt: messageText,
+        images: image
+          ? [{
+              name: image.name,
+              mimeType: image.mimeType,
+              size: image.size,
+              data: image.data
+            }]
+          : undefined
+      })
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.error || `Request failed with ${response.status}`);
+    }
+  }
+
   async function submitLocalSlashAction(trimmedInput: string): Promise<boolean> {
     const parsed = parseSlashCommandInput(trimmedInput);
     if (!parsed) return false;
@@ -1381,9 +1491,38 @@ export default function App() {
     return true;
   }
 
-  async function submitMessage(messageText: string) {
+  async function submitMessage(messageText: string, mode: ComposerSubmitMode = "default") {
     const trimmed = messageText.trim();
-    if ((!trimmed && !selectedImage) || isStreaming || activePanelView.kind !== "pi") return;
+    if ((!trimmed && !selectedImage) || activePanelView.kind !== "pi") return;
+
+    if (isStreaming) {
+      if (!trimmed) return;
+      if (mode === "steering") {
+        const queuedImage = selectedImage;
+        setActiveSteering({
+          id: crypto.randomUUID(),
+          content: trimmed
+        });
+        setInput("");
+        setSelectedImage(null);
+        setError(null);
+        void submitSteeringMessage(trimmed, queuedImage).catch((err) => {
+          setError(err instanceof Error ? err.message : t("errors.unexpectedChat"));
+        });
+        return;
+      }
+      setQueuedFollowUps((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          content: trimmed
+        }
+      ]);
+      setInput("");
+      setSelectedImage(null);
+      setError(null);
+      return;
+    }
 
     if (await submitLocalSlashAction(trimmed)) {
       return;
@@ -1490,7 +1629,12 @@ export default function App() {
       });
 
       if (streamState.finalMessage) {
-        // Build the assistant message with intermediate tool results embedded.
+        // Refresh context usage after a turn completes
+      if (activePanelView.kind === "pi") {
+        fetchContextUsage(activePanelView.sessionId);
+      }
+
+      // Build the assistant message with intermediate tool results embedded.
         const fm = streamState.finalMessage as AssistantMessage;
         const finalAssistantMsg: AssistantMessage = {
           role: "assistant",
@@ -1557,6 +1701,10 @@ export default function App() {
       resetStreamingDraft();
       setIsStreaming(false);
     }
+  }
+
+  function handleSenderSubmit(messageText: string) {
+    void submitMessage(messageText);
   }
 
   function handleSlashSelect(value: string) {
@@ -1813,19 +1961,91 @@ export default function App() {
                 </div>
               </div>
             ) : (
-              <div className="messages">
+              <div className="messages" ref={setMessagesEl}>
                 <Bubble.List
                   autoScroll
                   className="chat-bubble-list"
                   items={piHistoryBubbleItems}
                   role={bubbleRoles}
                 />
+                {userBubbleCount >= 2 && (
+                  <Minimap
+                    userCount={userBubbleCount}
+                    userPreviews={userPreviews}
+                    scrollContainer={scrollContainer}
+                    onNavigate={handleMinimapNavigate}
+                  />
+                )}
                 {error && <div className="error-banner">{error}</div>}
               </div>
             )}
 
+            {activePanelView.kind === "pi" && contextUsage && contextUsage.tokens !== null && contextUsage.contextWindow > 0 ? (
+              <div className="context-usage-bar">
+                <span className="context-usage-label">
+                  {t("composer.contextUsage", {
+                    used: contextUsage.tokens.toLocaleString(),
+                    total: contextUsage.contextWindow.toLocaleString()
+                  })}
+                </span>
+                <div className="context-usage-track">
+                  <div
+                    className={
+                      `context-usage-fill${
+                        contextUsage.percent !== null && contextUsage.percent >= 80
+                          ? " context-usage-fill-high"
+                          : contextUsage.percent !== null && contextUsage.percent >= 50
+                            ? " context-usage-fill-mid"
+                            : ""
+                      }`
+                    }
+                    style={{ width: `${Math.min(contextUsage.percent ?? 0, 100)}%` }}
+                  />
+                </div>
+                <span className="context-usage-percent">
+                  {contextUsage.percent !== null
+                    ? t("composer.contextPercent", { percent: Math.round(contextUsage.percent) })
+                    : null}
+                </span>
+              </div>
+            ) : activePanelView.kind === "pi" && piSessionDetail ? (
+              <div className="context-usage-bar">
+                <span className="context-usage-label">{t("composer.contextNotAvailable")}</span>
+              </div>
+            ) : null}
+
             {activePanelView.kind === "pi" ? (
               <div className="composer">
+                {activeSteering ? (
+                  <div className="composer-queue-header">
+                    <div className="composer-queue-title">{t("composer.activeSteering")}</div>
+                    <div className="composer-queue-preview">{activeSteering.content}</div>
+                  </div>
+                ) : null}
+                {queuedFollowUps.length > 0 ? (
+                  <div className="composer-queue-header">
+                    <div className="composer-queue-title">{t("composer.followingUp")}</div>
+                    <div className="composer-queue-preview">
+                      {queuedFollowUps[0]?.content}
+                    </div>
+                    {queuedFollowUps.length > 1 ? (
+                      <div className="composer-queue-list">
+                        {queuedFollowUps.map((item) => (
+                          <div className="composer-queue-item" key={item.id}>
+                            <span>{item.content}</span>
+                            <button
+                              type="button"
+                              aria-label={`Remove queued follow-up: ${item.content}`}
+                              onClick={() => removeQueuedFollowUp(item.id)}
+                            >
+                              {t("composer.remove")}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 {selectedImage ? (
                   <div className="attachment-preview">
                     <img alt={selectedImage.name} src={getImageDataUrl(selectedImage)} />
@@ -1854,8 +2074,8 @@ export default function App() {
                     <Sender
                       autoSize={{ minRows: 2, maxRows: 8 }}
                       className="chat-sender"
-                      disabled={isStreaming || piSessionLoading || Boolean(piSessionError)}
-                      loading={isStreaming}
+                      disabled={piSessionLoading || Boolean(piSessionError)}
+                      loading={false}
                       onChange={(value) => {
                         setInput(value);
                         onTrigger(
@@ -1866,6 +2086,13 @@ export default function App() {
                       }}
                       onKeyDown={(event) => {
                         if (isSidebarToggleShortcut(event)) {
+                          return;
+                        }
+
+                        if (isSteeringSubmitShortcut(event)) {
+                          event.preventDefault();
+                          void submitMessage(input, "steering");
+                          onTrigger(false);
                           return;
                         }
 
@@ -1887,7 +2114,7 @@ export default function App() {
 
                         onKeyDown(event);
                       }}
-                      onSubmit={submitMessage}
+                      onSubmit={handleSenderSubmit}
                       placeholder={t("composer.continuePiSession")}
                       submitType="enter"
                       value={input}
