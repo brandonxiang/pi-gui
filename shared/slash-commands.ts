@@ -1,12 +1,14 @@
 export type AppSlashCommandScope = "client" | "server";
+export type AppSlashCommandSource = "app" | "pi";
 
 export const appSlashCommands = [
-  { name: "settings", descriptionKey: "slash.settings", scope: "client" },
-  { name: "model", descriptionKey: "slash.model", scope: "client" },
-  { name: "copy", descriptionKey: "slash.copy", scope: "client" },
-  { name: "session", descriptionKey: "slash.session", scope: "server" },
-  { name: "export", descriptionKey: "slash.export", scope: "server" },
-  { name: "name", descriptionKey: "slash.name", scope: "server" }
+  { name: "settings", descriptionKey: "slash.settings", scope: "client", source: "app" },
+  { name: "model", descriptionKey: "slash.model", scope: "client", source: "app" },
+  { name: "copy", descriptionKey: "slash.copy", scope: "client", source: "app" },
+  { name: "session", descriptionKey: "slash.session", scope: "server", source: "pi" },
+  { name: "export", descriptionKey: "slash.export", scope: "server", source: "pi" },
+  { name: "name", descriptionKey: "slash.name", scope: "server", source: "pi" },
+  { name: "compact", descriptionKey: "slash.compact", scope: "server", source: "pi" }
 ] as const;
 
 export type AppSlashCommand = (typeof appSlashCommands)[number];

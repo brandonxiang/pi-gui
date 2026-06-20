@@ -209,6 +209,9 @@ export function PiSessionSection({
   }, [expandedProjects, orderedProjects, selectedSessionId]);
 
   useEffect(() => {
+    // Skip sync when projects haven't loaded yet, to avoid overwriting the stored order with an empty list.
+    if (projects.length === 0) return;
+
     const availablePaths = new Set(projects.map((project) => project.path));
     const nextOrder = projectOrder.filter((path) => availablePaths.has(path));
     const missingPaths = projects

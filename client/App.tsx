@@ -89,6 +89,7 @@ type LocalActionResult = {
   status: LocalResultStatus;
   updatedSessionName?: string;
   refreshProjects?: boolean;
+  refreshSessionDetail?: boolean;
 };
 type ChatSession = {
   id: string;
@@ -469,7 +470,11 @@ function getSlashSuggestionItems(
         </div>
       ),
       value: `/${command.name}`,
-      extra: <span className="slash-command-source slash-command-badge-app">app</span>
+      extra: (
+        <span className={`slash-command-source slash-command-badge-${command.source}`}>
+          {command.source}
+        </span>
+      )
     })),
     ...matchedSkills.map((skill) => ({
       label: (
@@ -785,20 +790,9 @@ export default function App() {
     }
 
     try {
-      const response = await fetch(`/api/pi-sessions/${encodeURIComponent(sessionId)}`);
-      const body = (await response.json().catch(() => null)) as
-        | PiSessionDetailResponse
-        | { error?: string }
-        | null;
-
-      if (!response.ok) {
-        throw new Error(
-          body && "error" in body && body.error ? body.error : `Request failed with ${response.status}`
-        );
-      }
-
+      const detail = await loadPiSessionDetail(sessionId);
       if (piSessionRequestIdRef.current !== requestId) return;
-      setPiSessionDetail(body as PiSessionDetailResponse);
+      setPiSessionDetail(detail);
     } catch (err) {
       if (piSessionRequestIdRef.current !== requestId) return;
       setPiSessionError(err instanceof Error ? err.message : "Failed to load Pi session");
@@ -1185,7 +1179,7 @@ export default function App() {
   }
 
   async function runServerSlashAction(
-    action: "session" | "export" | "name",
+    action: "session" | "export" | "name" | "compact",
     args: string
   ): Promise<LocalActionResult> {
     const response = await fetch("/api/pi-local-actions", {
@@ -1208,6 +1202,22 @@ export default function App() {
     return body.result;
   }
 
+  async function loadPiSessionDetail(sessionId: string): Promise<PiSessionDetailResponse> {
+    const response = await fetch(`/api/pi-sessions/${encodeURIComponent(sessionId)}`);
+    const body = (await response.json().catch(() => null)) as
+      | PiSessionDetailResponse
+      | { error?: string }
+      | null;
+
+    if (!response.ok) {
+      throw new Error(
+        body && "error" in body && body.error ? body.error : `Request failed with ${response.status}`
+      );
+    }
+
+    return body as PiSessionDetailResponse;
+  }
+
   async function submitLocalSlashAction(trimmedInput: string): Promise<boolean> {
     const parsed = parseSlashCommandInput(trimmedInput);
     if (!parsed) return false;
@@ -1219,32 +1229,13 @@ export default function App() {
     setInput("");
     setSelectedImage(null);
     setError(null);
+    setIsStreaming(true);
 
+    let result: LocalActionResult;
     try {
-      setIsStreaming(true);
-      const result = isServerAppSlashCommand(command)
+      result = isServerAppSlashCommand(command)
         ? await runServerSlashAction(command.name, parsed.args)
         : await runClientSlashAction(command.name);
-
-      appendPiLocalTurn(userMessage, result);
-
-      if (result.updatedSessionName) {
-        setPiSessionDetail((current) =>
-          current
-            ? {
-                ...current,
-                session: {
-                  ...current.session,
-                  name: result.updatedSessionName || current.session.name
-                }
-              }
-            : current
-        );
-      }
-
-      if (result.refreshProjects) {
-        await refreshPiProjects();
-      }
     } catch (error) {
       appendPiLocalTurn(userMessage, {
         title: command.name,
@@ -1254,6 +1245,51 @@ export default function App() {
             : "The local action failed unexpectedly.",
         status: "error"
       });
+      setIsStreaming(false);
+      return true;
+    }
+
+    appendPiLocalTurn(userMessage, result);
+
+    if (result.updatedSessionName) {
+      setPiSessionDetail((current) =>
+        current
+          ? {
+              ...current,
+              session: {
+                ...current.session,
+                name: result.updatedSessionName || current.session.name
+              }
+            }
+          : current
+      );
+    }
+
+    try {
+      if (result.refreshProjects) {
+        try {
+          await refreshPiProjects();
+        } catch (error) {
+          setError(
+            error instanceof Error
+              ? error.message
+              : "The command succeeded, but refreshing the project list failed."
+          );
+        }
+      }
+
+      if (result.refreshSessionDetail && activePanelView.kind === "pi") {
+        try {
+          const detail = await loadPiSessionDetail(activePanelView.sessionId);
+          setPiSessionDetail(detail);
+        } catch (error) {
+          setError(
+            error instanceof Error
+              ? error.message
+              : "The session updated, but refreshing the latest history failed."
+          );
+        }
+      }
     } finally {
       setIsStreaming(false);
     }

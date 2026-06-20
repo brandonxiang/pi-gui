@@ -586,9 +586,11 @@ async function buildServer() {
       }
 
       const result = await executeServerLocalAction(
-        command.name as Extract<AppSlashCommandName, "session" | "export" | "name">,
+        command.name as Extract<AppSlashCommandName, "session" | "export" | "name" | "compact">,
         body.args || "",
         {
+          compactSession: (customInstructions) =>
+            persistedSession.session.compact(customInstructions),
           exportToHtml: () => persistedSession.session.exportToHtml(),
           exportToJsonl: () => persistedSession.session.exportToJsonl(),
           getSessionName: () => readSessionName(piSessionId),

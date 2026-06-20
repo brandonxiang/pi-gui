@@ -37,12 +37,18 @@ describe("app slash command registry", () => {
       "copy",
       "session",
       "export",
-      "name"
+      "name",
+      "compact"
     ]);
   });
 
   it("distinguishes server-backed actions from client actions", () => {
     expect(isServerAppSlashCommand(findAppSlashCommand("export")!)).toBe(true);
     expect(isServerAppSlashCommand(findAppSlashCommand("copy")!)).toBe(false);
+  });
+
+  it("tracks where each supported slash command comes from", () => {
+    expect(findAppSlashCommand("settings")?.source).toBe("app");
+    expect(findAppSlashCommand("compact")?.source).toBe("pi");
   });
 });

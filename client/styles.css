@@ -673,7 +673,7 @@ h2 {
 }
 
 .pi-session-info {
-  margin-right: 12px;
+  margin-right: 18px;
   display: grid;
   min-width: 0;
   gap: 3px;
@@ -1514,6 +1514,12 @@ h2 {
   color: #0b63c8;
   background: rgba(11, 99, 200, 0.08);
   border: 1px solid rgba(11, 99, 200, 0.16);
+}
+
+.slash-command-badge-pi {
+  color: #0f766e;
+  background: rgba(15, 118, 110, 0.08);
+  border: 1px solid rgba(15, 118, 110, 0.14);
 }
 
 .slash-command-badge-skill {

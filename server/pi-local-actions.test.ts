@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   executeServerLocalAction,
+  formatCompactionResult,
   formatSessionStats,
   normalizeExportFormat,
+  type SessionCompactionResult,
   type SessionStatsSnapshot
 } from "./pi-local-actions.js";
 
@@ -23,6 +25,15 @@ const stats: SessionStatsSnapshot = {
   cost: 0.123456
 };
 
+const compactionResult: SessionCompactionResult = {
+  summary: "Kept the recent implementation work and summarized the older planning discussion.",
+  tokensBefore: 54321,
+  details: {
+    readFiles: ["src/App.tsx"],
+    modifiedFiles: ["server/index.ts"]
+  }
+};
+
 describe("normalizeExportFormat", () => {
   it("defaults to html unless jsonl is explicitly requested", () => {
     expect(normalizeExportFormat("")).toBe("html");
@@ -41,9 +52,21 @@ describe("formatSessionStats", () => {
   });
 });
 
+describe("formatCompactionResult", () => {
+  it("renders compaction summary metadata as markdown", () => {
+    const formatted = formatCompactionResult(compactionResult);
+
+    expect(formatted).toContain("Compacted the current session context.");
+    expect(formatted).toContain("54,321");
+    expect(formatted).toContain("src/App.tsx");
+    expect(formatted).toContain("server/index.ts");
+  });
+});
+
 describe("executeServerLocalAction", () => {
   it("returns a structured export result", async () => {
     const result = await executeServerLocalAction("export", "jsonl", {
+      compactSession: vi.fn(),
       exportToHtml: vi.fn(),
       exportToJsonl: vi.fn(() => "/tmp/export.jsonl"),
       getSessionName: vi.fn(),
@@ -62,6 +85,7 @@ describe("executeServerLocalAction", () => {
     const setSessionName = vi.fn();
 
     const result = await executeServerLocalAction("name", "Roadmap", {
+      compactSession: vi.fn(),
       exportToHtml: vi.fn(),
       exportToJsonl: vi.fn(),
       getSessionName: vi.fn(async () => "Old"),
@@ -72,5 +96,21 @@ describe("executeServerLocalAction", () => {
     expect(setSessionName).toHaveBeenCalledWith("Roadmap");
     expect(result.updatedSessionName).toBe("Roadmap");
     expect(result.refreshProjects).toBe(true);
+  });
+
+  it("runs SDK compaction and requests a session detail refresh", async () => {
+    const result = await executeServerLocalAction("compact", "Keep the latest debugging context", {
+      compactSession: vi.fn(async () => compactionResult),
+      exportToHtml: vi.fn(),
+      exportToJsonl: vi.fn(),
+      getSessionName: vi.fn(),
+      getSessionStats: vi.fn(() => stats),
+      setSessionName: vi.fn()
+    });
+
+    expect(result.title).toBe("Compact");
+    expect(result.status).toBe("success");
+    expect(result.refreshSessionDetail).toBe(true);
+    expect(result.content).toContain(compactionResult.summary);
   });
 });
