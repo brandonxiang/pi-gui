@@ -741,6 +741,7 @@ h2 {
 }
 
 .chat-header {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -778,6 +779,28 @@ h2 {
 }
 
 /* .ghost-button and .pill removed — now inline compact header */
+
+.chat-header-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  right: 24px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 6px;
+  background: var(--canvas);
+  color: var(--ink-secondary);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.chat-header-action-btn:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+  background: var(--card-tint-sky);
+}
 
 .messages {
   min-height: 0;

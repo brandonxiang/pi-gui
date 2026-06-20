@@ -1623,6 +1623,22 @@ export default function App() {
                 <span className="chat-header-title">{panelTitle}</span>
                 {panelMeta ? <small className="chat-header-meta">{panelMeta}</small> : null}
               </div>
+              {piSessionDetail ? (
+                <button
+                  className="chat-header-action-btn"
+                  type="button"
+                  title={t("panel.openEditor")}
+                  onClick={() => {
+                    const cwd = piSessionDetail?.session.cwd;
+                    if (cwd) window.open(`vscode://file/${encodeURIComponent(cwd)}`);
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="16 18 22 12 16 6" />
+                    <polyline points="8 6 2 12 8 18" />
+                  </svg>
+                </button>
+              ) : null}
             </header>
 
             {activePanelView.kind === "empty" ? (
