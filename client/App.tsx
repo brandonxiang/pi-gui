@@ -1259,7 +1259,9 @@ export default function App() {
             isStreaming={isStreaming}
             locale={locale}
             loading={projectsLoading}
-            onOpenNewSession={openNewSessionLauncher}
+            onCreateSessionInProject={(projectPath) => {
+              void createPiSessionInProject(projectPath);
+            }}
             projects={projects}
             selectedSessionId={selectedPiSessionId}
             onSelectSession={(sessionId) => {
@@ -1571,7 +1573,11 @@ export default function App() {
           </div>
 
           <div className="launcher-add-project">
-            <button className="workspace-browse-btn" type="button" onClick={handleBrowseClick}>
+            <button
+              className="workspace-browse-btn launcher-add-project-button"
+              type="button"
+              onClick={handleBrowseClick}
+            >
               {t("launcher.addProject")}
             </button>
             {workspaceResolving ? (

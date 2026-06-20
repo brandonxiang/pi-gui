@@ -520,6 +520,20 @@ h2 {
   transition: background 0.12s;
 }
 
+.pi-project-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--sidebar-text-muted);
+  transition: transform 0.12s ease, color 0.12s ease;
+}
+
+.pi-project-chevron-expanded {
+  transform: rotate(90deg);
+  color: var(--sidebar-text);
+}
+
 .pi-project-header:disabled {
   cursor: not-allowed;
   opacity: 0.45;
@@ -527,6 +541,10 @@ h2 {
 
 .pi-project-header:hover:not(:disabled) {
   background: var(--sidebar-hover);
+}
+
+.pi-project-group[draggable="true"] .pi-project-header {
+  cursor: grab;
 }
 
 .pi-new-session-btn {
@@ -580,6 +598,27 @@ h2 {
   display: grid;
   gap: 2px;
   padding-left: 12px;
+}
+
+.pi-session-show-more {
+  justify-self: start;
+  margin: 4px 0 0 10px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pi-session-show-more:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.pi-session-show-more:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .pi-session-row {
@@ -1456,6 +1495,18 @@ h2 {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.launcher-add-project-button {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.launcher-add-project-button:hover {
+  border-color: var(--primary-active);
+  background: var(--primary-active);
+  color: #fff;
 }
 
 .workspace-error {
