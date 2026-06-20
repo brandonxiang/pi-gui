@@ -23,12 +23,18 @@ import {
   parseImages,
   type ImageContent
 } from "./chat-validation.js";
+import { executeServerLocalAction } from "./pi-local-actions.js";
 import {
   findSessionById,
   groupSessionsByProject,
   loadPiSessionContextById,
   loadPiSessionDetailById
 } from "./pi-sessions.js";
+import {
+  findAppSlashCommand,
+  isServerAppSlashCommand,
+  type AppSlashCommandName
+} from "../shared/slash-commands.js";
 
 interface ChatRequest {
   provider?: string;
@@ -37,6 +43,11 @@ interface ChatRequest {
   prompt?: string;
   thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
   images?: ChatImage[];
+}
+
+interface LocalActionRequest {
+  action?: string;
+  args?: string;
 }
 
 interface AgentSessionRecord {
@@ -89,111 +100,6 @@ const SKILLS_CACHE_TTL_MS = 60_000; // 1 minute
 
 function sendEvent(res: import("node:http").ServerResponse, event: unknown) {
   res.write(`data: ${JSON.stringify(event)}\n\n`);
-}
-
-/**
- * Handle a pi slash command (e.g. /compact, /model, /copy).
- * Emits events via SSE and ends the response.
- */
-async function handlePiSlashCommand(
-  session: AgentSession,
-  command: string,
-  raw: import("node:http").ServerResponse,
-  provider: string,
-  modelId: string
-) {
-  const parts = command.slice(1).trim().split(/\s+/);
-  const cmd = parts[0]?.toLowerCase();
-  const args = parts.slice(1).join(" ");
-
-  let output = "";
-
-  try {
-    switch (cmd) {
-      case "compact": {
-        const result = await session.compact(args || undefined);
-        const tokensBefore = result?.tokensBefore ?? "?";
-        const summary = result?.summary
-          ? `\n> ${result.summary.slice(0, 200)}`
-          : "";
-        output = `✅ **Compacted** — \`${tokensBefore}\` tokens before${summary}`;
-        sendEvent(raw, { type: "delta", delta: output });
-        break;
-      }
-
-      case "copy": {
-        const text = session.getLastAssistantText();
-        output = text
-          ? `📋 **Copied** — ${text.length} chars\n\n\`\`\`\n${text}\n\`\`\``
-          : "No assistant message to copy.";
-        sendEvent(raw, { type: "delta", delta: output });
-        break;
-      }
-
-      case "session": {
-        const stats = session.getSessionStats();
-        output = `📊 **Session Stats**\n\n`
-          + `| Metric | Value |\n`
-          + `|--------|-------|\n`
-          + `| ID | \`${stats.sessionId}\` |\n`
-          + `| File | \`${stats.sessionFile || "(in-memory)"}\` |\n`
-          + `| Messages | ${stats.totalMessages} (${stats.userMessages} user / ${stats.assistantMessages} assistant) |\n`
-          + `| Tool calls | ${stats.toolCalls} / results: ${stats.toolResults} |\n`
-          + `| Token in | ${stats.tokens.input} |\n`
-          + `| Token out | ${stats.tokens.output} |\n`
-          + `| Cache (r/w) | ${stats.tokens.cacheRead} / ${stats.tokens.cacheWrite} |\n`
-          + `| **Cost** | **$${stats.cost.toFixed(6)}** |`;
-        sendEvent(raw, { type: "delta", delta: output });
-        break;
-      }
-
-      case "export": {
-        const format = args.toLowerCase() === "jsonl" ? "jsonl" : "html";
-        const filePath =
-          format === "html"
-            ? await session.exportToHtml()
-            : session.exportToJsonl();
-        output = `📦 **Exported** as \`${format}\`: \`${filePath}\``;
-        sendEvent(raw, { type: "delta", delta: output });
-        break;
-      }
-
-      case "name": {
-        const name = args.trim();
-        if (name) {
-          session.setSessionName(name);
-          output = `✏️ **Session renamed** to: \`${name}\``;
-        } else {
-          output = `Current session name: **${session.sessionName || "(unnamed)"}**`;
-        }
-        sendEvent(raw, { type: "delta", delta: output });
-        break;
-      }
-
-      default: {
-        output = `⚠️ Unknown slash command **"/${cmd}"** — falling through to agent.`;
-        sendEvent(raw, { type: "delta", delta: output });
-        break;
-      }
-    }
-  } catch (error) {
-    sendEvent(raw, {
-      type: "error",
-      error: error instanceof Error ? error.message : "Slash command failed"
-    });
-    return;
-  }
-
-  sendEvent(raw, {
-    type: "done",
-    message: {
-      role: "assistant",
-      content: output,
-      provider,
-      model: modelId,
-      timestamp: Date.now()
-    }
-  });
 }
 
 function buildResourceLoader(systemPrompt: string): ResourceLoader {
@@ -442,6 +348,43 @@ async function createPersistedPiSession(
   return record;
 }
 
+async function persistSessionName(sessionId: string, name: string) {
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    throw new Error("name is required");
+  }
+
+  const localSession = sessions.get(sessionId);
+  if (localSession) {
+    localSession.session.sessionManager.appendSessionInfo(trimmedName);
+    return trimmedName;
+  }
+
+  const allSessions = await SessionManager.listAll();
+  const match = findSessionById(allSessions, sessionId);
+  if (!match) {
+    throw new Error("Session not found");
+  }
+
+  const sessionManager = SessionManager.open(match.path);
+  sessionManager.appendSessionInfo(trimmedName);
+  return trimmedName;
+}
+
+async function readSessionName(sessionId: string) {
+  const localSession = sessions.get(sessionId);
+  if (localSession) {
+    return localSession.session.sessionManager.getSessionName() || "";
+  }
+
+  const detail = await loadPiSessionDetailById(sessionId);
+  if (!detail) {
+    throw new Error("Session not found");
+  }
+
+  return detail.session.name || "";
+}
+
 async function buildServer() {
   const server = Fastify({
     bodyLimit: 8 * 1024 * 1024
@@ -609,28 +552,56 @@ async function buildServer() {
       return { error: "name is required" };
     }
 
-    // Check local sessions (cached in sessions Map).
-    const localSession = sessions.get(sessionId);
-    if (localSession) {
-      localSession.session.sessionManager.appendSessionInfo(name.trim());
-      return { ok: true };
-    }
-
-    // Check persistent Pi sessions.
     try {
-      const allSessions = await SessionManager.listAll();
-      const match = findSessionById(allSessions, sessionId);
-      if (!match) {
-        reply.code(404);
-        return { error: "Session not found" };
-      }
-      const sm = SessionManager.open(match.path);
-      sm.appendSessionInfo(name.trim());
+      await persistSessionName(sessionId, name);
       return { ok: true };
     } catch (error) {
-      reply.code(500);
+      reply.code(error instanceof Error && error.message === "Session not found" ? 404 : 500);
       return {
         error: error instanceof Error ? error.message : "Failed to rename session"
+      };
+    }
+  });
+
+  server.post("/api/pi-local-actions", async (request, reply) => {
+    const body = request.body as LocalActionRequest;
+    const piSessionId = request.headers["x-pi-session-id"] as string | undefined;
+    const command = body.action ? findAppSlashCommand(body.action) : null;
+
+    if (!command || !isServerAppSlashCommand(command)) {
+      reply.code(400);
+      return { error: "Unsupported local action" };
+    }
+
+    if (!piSessionId?.trim()) {
+      reply.code(400);
+      return { error: "Pi session id is required" };
+    }
+
+    try {
+      const persistedSession = await createPersistedPiSession(piSessionId);
+      if (!persistedSession) {
+        reply.code(404);
+        return { error: "Pi session not found" };
+      }
+
+      const result = await executeServerLocalAction(
+        command.name as Extract<AppSlashCommandName, "session" | "export" | "name">,
+        body.args || "",
+        {
+          exportToHtml: () => persistedSession.session.exportToHtml(),
+          exportToJsonl: () => persistedSession.session.exportToJsonl(),
+          getSessionName: () => readSessionName(piSessionId),
+          getSessionStats: () => persistedSession.session.getSessionStats(),
+          setSessionName: (name) => persistSessionName(piSessionId, name).then(() => undefined)
+        }
+      );
+
+      return { result };
+    } catch (error) {
+      reply.code(error instanceof Error && error.message === "Session not found" ? 404 : 500);
+      return {
+        error: error instanceof Error ? error.message : "Failed to run local action"
       };
     }
   });
@@ -829,11 +800,7 @@ async function buildServer() {
           session.setThinkingLevel(body.thinkingLevel);
         }
 
-        if (prompt.startsWith("/")) {
-          await handlePiSlashCommand(session, prompt, raw, provider, modelId);
-        } else {
-          await session.prompt(prompt, images.length > 0 ? { images } : undefined);
-        }
+        await session.prompt(prompt, images.length > 0 ? { images } : undefined);
       } finally {
         unsubscribe();
         // Pi sessions are cached in piSessions map, so do NOT dispose() here.

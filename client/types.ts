@@ -87,6 +87,14 @@ export type PiHistoryMessage =
     }
   | {
       id: string;
+      role: "local_result";
+      title: string;
+      content: string;
+      status: "success" | "info" | "error";
+      timestamp: number;
+    }
+  | {
+      id: string;
       role: "summary";
       summaryType: "compaction" | "branch" | "custom";
       title: string;

@@ -16,6 +16,12 @@ import {
   type TranslationKey,
   type Translator
 } from "./i18n";
+import {
+  appSlashCommands,
+  findAppSlashCommand,
+  isServerAppSlashCommand,
+  parseSlashCommandInput
+} from "../shared/slash-commands.js";
 import type {
   AssistantMessage,
   ChatMessage,
@@ -76,6 +82,14 @@ type ModelOption = (typeof modelPresets)[number];
 type SlashSuggestionInfo = { query: string };
 type ProjectSuggestionInfo = { query: string };
 type Skill = { name: string; description: string; disableModelInvocation: boolean };
+type LocalResultStatus = Extract<PiHistoryMessage, { role: "local_result" }>["status"];
+type LocalActionResult = {
+  title: string;
+  content: string;
+  status: LocalResultStatus;
+  updatedSessionName?: string;
+  refreshProjects?: boolean;
+};
 type ChatSession = {
   id: string;
   title: string;
@@ -93,30 +107,6 @@ const THINKING_LEVEL_STORAGE_KEY = "my-pi-thinking-level";
 
 const defaultSystemPrompt =
   "You are My Pi, an online agent conversation assistant. Be concise, practical, and explicit about assumptions.";
-
-const slashCommands: Array<{ name: string; descriptionKey: TranslationKey }> = [
-  { name: "settings", descriptionKey: "slash.settings" },
-  { name: "model", descriptionKey: "slash.model" },
-  { name: "scoped-models", descriptionKey: "slash.scoped-models" },
-  { name: "export", descriptionKey: "slash.export" },
-  { name: "import", descriptionKey: "slash.import" },
-  { name: "share", descriptionKey: "slash.share" },
-  { name: "copy", descriptionKey: "slash.copy" },
-  { name: "name", descriptionKey: "slash.name" },
-  { name: "session", descriptionKey: "slash.session" },
-  { name: "changelog", descriptionKey: "slash.changelog" },
-  { name: "hotkeys", descriptionKey: "slash.hotkeys" },
-  { name: "fork", descriptionKey: "slash.fork" },
-  { name: "clone", descriptionKey: "slash.clone" },
-  { name: "tree", descriptionKey: "slash.tree" },
-  { name: "login", descriptionKey: "slash.login" },
-  { name: "logout", descriptionKey: "slash.logout" },
-  { name: "new", descriptionKey: "slash.new" },
-  { name: "compact", descriptionKey: "slash.compact" },
-  { name: "resume", descriptionKey: "slash.resume" },
-  { name: "reload", descriptionKey: "slash.reload" },
-  { name: "quit", descriptionKey: "slash.quit" }
-];
 
 const bubbleRoles: BubbleListProps["role"] = {
   assistant: {
@@ -344,6 +334,18 @@ function PiSummaryMessageContent({
   );
 }
 
+function PiLocalResultContent({
+  message
+}: {
+  message: Extract<PiHistoryMessage, { role: "local_result" }>;
+}) {
+  return (
+    <div className={`pi-local-result-card pi-local-result-card-${message.status}`}>
+      <RenderMarkdown content={message.content} />
+    </div>
+  );
+}
+
 function createBubbleItem(
   message: ChatMessage,
   index: number,
@@ -411,6 +413,15 @@ function createPiHistoryBubbleItem(entry: PiHistoryTranscriptEntry, index: numbe
     };
   }
 
+  if (entry.role === "local_result") {
+    return {
+      key: `${entry.role}-${entry.timestamp}-${index}`,
+      role: "assistant",
+      content: <PiLocalResultContent message={entry} />,
+      header: <MessageHeader label={t("chat.localAction")} meta={entry.title} />
+    };
+  }
+
   return {
     key: `${entry.role}-${entry.timestamp}-${index}`,
     role: "assistant",
@@ -442,7 +453,7 @@ function getSlashSuggestionItems(
   info?: SlashSuggestionInfo
 ): SuggestionItem[] {
   const query = info?.query.toLowerCase() || "";
-  const matchedCommands = slashCommands.filter((command) =>
+  const matchedCommands = appSlashCommands.filter((command) =>
     command.name.toLowerCase().includes(query)
   );
   const matchedSkills = skills.filter((skill) =>
@@ -454,11 +465,11 @@ function getSlashSuggestionItems(
       label: (
         <div className="slash-command-option">
           <span>/{command.name}</span>
-          <small>{t(command.descriptionKey)}</small>
+          <small>{t(command.descriptionKey as TranslationKey)}</small>
         </div>
       ),
       value: `/${command.name}`,
-      extra: <span className="slash-command-source slash-command-badge-pi">pi</span>
+      extra: <span className="slash-command-source slash-command-badge-app">app</span>
     })),
     ...matchedSkills.map((skill) => ({
       label: (
@@ -566,6 +577,7 @@ export default function App() {
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [activePanelView, setActivePanelView] = useState<ActivePanelView>({ kind: "empty" });
   const [piSessionDetail, setPiSessionDetail] = useState<PiSessionDetailResponse | null>(null);
+  const [piLocalMessages, setPiLocalMessages] = useState<PiHistoryMessage[]>([]);
   const [piPendingMessages, setPiPendingMessages] = useState<PiHistoryMessage[]>([]);
   const [piSessionError, setPiSessionError] = useState<string | null>(null);
   const [piSessionLoading, setPiSessionLoading] = useState(false);
@@ -680,9 +692,11 @@ export default function App() {
   }, [draftAssistant, isStreaming, t]);
 
   const piHistoryBubbleItems = useMemo<BubbleItemType[]>(() => {
-    const items = groupPiHistoryMessages([...piHistoryMessages, ...piPendingMessages]).map((entry, index) =>
-      createPiHistoryBubbleItem(entry, index, t)
-    );
+    const items = groupPiHistoryMessages([
+      ...piHistoryMessages,
+      ...piLocalMessages,
+      ...piPendingMessages
+    ]).map((entry, index) => createPiHistoryBubbleItem(entry, index, t));
     if (!thinkingBubbleItem && !streamingAssistantBubbleItem && draftToolBubbleItems.length === 0) return items;
 
     return [
@@ -691,7 +705,7 @@ export default function App() {
       ...(thinkingBubbleItem ? [thinkingBubbleItem] : []),
       ...(streamingAssistantBubbleItem ? [streamingAssistantBubbleItem] : [])
     ];
-  }, [draftToolBubbleItems, piHistoryMessages, piPendingMessages, streamingAssistantBubbleItem, t, thinkingBubbleItem]);
+  }, [draftToolBubbleItems, piHistoryMessages, piLocalMessages, piPendingMessages, streamingAssistantBubbleItem, t, thinkingBubbleItem]);
 
   const panelTitle = selectedPiSessionId
     ? piSessionDetail?.session.name || t("chat.piSession")
@@ -737,6 +751,7 @@ export default function App() {
     piSessionRequestIdRef.current += 1;
     setActivePanelView({ kind: "empty" });
     setPiSessionDetail(null);
+    setPiLocalMessages([]);
     setPiSessionLoading(false);
     setPiSessionError(null);
     setPiPendingMessages([]);
@@ -756,6 +771,7 @@ export default function App() {
     piSessionRequestIdRef.current = requestId;
     setActivePanelView({ kind: "pi", sessionId });
     setPiSessionDetail(null);
+    setPiLocalMessages([]);
     setPiSessionLoading(true);
     setPiSessionError(null);
     setError(null);
@@ -1076,9 +1092,182 @@ export default function App() {
     setIsSettingsOpen(false);
   }
 
+  function openSettingsModal() {
+    const storedThinkingLevel =
+      (localStorage.getItem(THINKING_LEVEL_STORAGE_KEY) as ThinkingLevel | null) || "high";
+    setSettingsDraft({ modelKey, panelMode, systemPrompt, locale, thinkingLevel: storedThinkingLevel });
+    setIsSettingsOpen(true);
+  }
+
+  function createLocalUserMessage(content: string): Extract<PiHistoryMessage, { role: "user" }> {
+    return {
+      id: `local-user-${crypto.randomUUID()}`,
+      role: "user",
+      content,
+      timestamp: Date.now()
+    };
+  }
+
+  function createLocalResultMessage(
+    result: LocalActionResult
+  ): Extract<PiHistoryMessage, { role: "local_result" }> {
+    return {
+      id: `local-result-${crypto.randomUUID()}`,
+      role: "local_result",
+      title: result.title,
+      content: result.content,
+      status: result.status,
+      timestamp: Date.now()
+    };
+  }
+
+  function appendPiLocalTurn(
+    userMessage: Extract<PiHistoryMessage, { role: "user" }>,
+    result: LocalActionResult
+  ) {
+    setPiLocalMessages((current) => [
+      ...current,
+      userMessage,
+      createLocalResultMessage(result)
+    ]);
+  }
+
+  async function runClientSlashAction(
+    commandName: "settings" | "model" | "copy"
+  ): Promise<LocalActionResult> {
+    if (commandName === "settings") {
+      openSettingsModal();
+      return {
+        title: "Settings",
+        content: "Opened the Settings panel.",
+        status: "success"
+      };
+    }
+
+    if (commandName === "model") {
+      openSettingsModal();
+      return {
+        title: "Model",
+        content: "Opened Settings. Update the model from the Settings panel.",
+        status: "success"
+      };
+    }
+
+    const latestAssistant = [...piHistoryMessages]
+      .reverse()
+      .find((message): message is Extract<PiHistoryMessage, { role: "assistant" }> => message.role === "assistant");
+
+    if (!latestAssistant?.content) {
+      return {
+        title: "Copy",
+        content: "No assistant message is available to copy yet.",
+        status: "error"
+      };
+    }
+
+    try {
+      await navigator.clipboard.writeText(latestAssistant.content);
+      return {
+        title: "Copy",
+        content: `Copied the last assistant message to the clipboard (${latestAssistant.content.length} characters).`,
+        status: "success"
+      };
+    } catch (error) {
+      return {
+        title: "Copy",
+        content:
+          error instanceof Error
+            ? `Failed to copy the last assistant message: ${error.message}`
+            : "Failed to copy the last assistant message.",
+        status: "error"
+      };
+    }
+  }
+
+  async function runServerSlashAction(
+    action: "session" | "export" | "name",
+    args: string
+  ): Promise<LocalActionResult> {
+    const response = await fetch("/api/pi-local-actions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-pi-session-id": activePanelView.kind === "pi" ? activePanelView.sessionId : ""
+      },
+      body: JSON.stringify({ action, args })
+    });
+
+    const body = (await response.json().catch(() => null)) as
+      | { result?: LocalActionResult; error?: string }
+      | null;
+
+    if (!response.ok || !body?.result) {
+      throw new Error(body?.error || `Request failed with ${response.status}`);
+    }
+
+    return body.result;
+  }
+
+  async function submitLocalSlashAction(trimmedInput: string): Promise<boolean> {
+    const parsed = parseSlashCommandInput(trimmedInput);
+    if (!parsed) return false;
+
+    const command = findAppSlashCommand(parsed.normalizedName);
+    if (!command) return false;
+
+    const userMessage = createLocalUserMessage(trimmedInput);
+    setInput("");
+    setSelectedImage(null);
+    setError(null);
+
+    try {
+      setIsStreaming(true);
+      const result = isServerAppSlashCommand(command)
+        ? await runServerSlashAction(command.name, parsed.args)
+        : await runClientSlashAction(command.name);
+
+      appendPiLocalTurn(userMessage, result);
+
+      if (result.updatedSessionName) {
+        setPiSessionDetail((current) =>
+          current
+            ? {
+                ...current,
+                session: {
+                  ...current.session,
+                  name: result.updatedSessionName || current.session.name
+                }
+              }
+            : current
+        );
+      }
+
+      if (result.refreshProjects) {
+        await refreshPiProjects();
+      }
+    } catch (error) {
+      appendPiLocalTurn(userMessage, {
+        title: command.name,
+        content:
+          error instanceof Error
+            ? error.message
+            : "The local action failed unexpectedly.",
+        status: "error"
+      });
+    } finally {
+      setIsStreaming(false);
+    }
+
+    return true;
+  }
+
   async function submitMessage(messageText: string) {
     const trimmed = messageText.trim();
     if ((!trimmed && !selectedImage) || isStreaming || activePanelView.kind !== "pi") return;
+
+    if (await submitLocalSlashAction(trimmed)) {
+      return;
+    }
 
     if (selectedImage && !selectedModelSupportsImages) {
       setError(t("errors.noImageSupport"));
@@ -1331,13 +1520,7 @@ export default function App() {
                   className="icon-button"
                   type="button"
                   title={t("settings.title")}
-                  onClick={() => {
-                    const storedThinkingLevel =
-                      (localStorage.getItem(THINKING_LEVEL_STORAGE_KEY) as ThinkingLevel | null) ||
-                      "high";
-                    setSettingsDraft({ modelKey, panelMode, systemPrompt, locale, thinkingLevel: storedThinkingLevel });
-                    setIsSettingsOpen(true);
-                  }}
+                  onClick={openSettingsModal}
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="3" />
@@ -1440,7 +1623,6 @@ export default function App() {
                 <span className="chat-header-title">{panelTitle}</span>
                 {panelMeta ? <small className="chat-header-meta">{panelMeta}</small> : null}
               </div>
-              {selectedPiSessionId ? <span className="chat-mode-pill">{t("panel.piSessionPill")}</span> : null}
             </header>
 
             {activePanelView.kind === "empty" ? (
