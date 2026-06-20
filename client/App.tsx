@@ -32,6 +32,11 @@ import {
   getNewestProjectSessionId,
   resolveInitialPiSessionSelection
 } from "./pi-session-launch.js";
+import {
+  applyPiSessionStreamingEvent,
+  createPiSessionStreamingState,
+  flushPiSessionThinking
+} from "./pi-session-streaming";
 
 const MarkdownContent = lazy(() => import("./MarkdownContent"));
 const TerminalPanel = lazy(async () => {
@@ -477,6 +482,7 @@ export default function App() {
   });
   const [draftAssistant, setDraftAssistant] = useState("");
   const [draftThinking, setDraftThinking] = useState("");
+  const [draftThinkingVisible, setDraftThinkingVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -508,6 +514,7 @@ export default function App() {
   const didHydrateSelectionRef = useRef(false);
   const piSessionRequestIdRef = useRef(0);
   const projectFileInputRef = useRef<HTMLInputElement>(null);
+  const thinkingFlushTimeoutRef = useRef<number | null>(null);
   const piHistoryMessages = piSessionDetail?.messages ?? [];
   const selectedPiSessionId = activePanelView.kind === "pi" ? activePanelView.sessionId : null;
 
@@ -540,6 +547,20 @@ export default function App() {
     project.name.toLowerCase().includes(selectSessionQuery.trim().toLowerCase())
   );
 
+  function clearThinkingFlushTimeout() {
+    if (thinkingFlushTimeoutRef.current === null) return;
+    window.clearTimeout(thinkingFlushTimeoutRef.current);
+    thinkingFlushTimeoutRef.current = null;
+  }
+
+  function resetStreamingDraft() {
+    clearThinkingFlushTimeout();
+    setDraftAssistant("");
+    setDraftThinking("");
+    setDraftThinkingVisible(false);
+    setDraftToolMessages(new Map());
+  }
+
   const draftToolBubbleItems = useMemo<BubbleItemType[]>(() => {
     if (draftToolMessages.size === 0) return [];
 
@@ -559,46 +580,50 @@ export default function App() {
     }));
   }, [draftToolMessages, t]);
 
-  const streamingBubbleItem = useMemo<BubbleItemType | null>(() => {
-    if (!draftAssistant && !draftThinking && draftToolMessages.size === 0) return null;
-    if (!draftAssistant && !draftThinking) return null;
-
-    const content = draftThinking ? (
-      <div>
-        {draftThinking ? (
-          <details className="thinking-block" open>
-            <summary>{t("chat.thinking")}</summary>
-            <div className="thinking-content">{draftThinking}</div>
-          </details>
-        ) : null}
-        {draftAssistant ? <RenderMarkdown content={draftAssistant} /> : null}
-      </div>
-    ) : (
-      draftAssistant
-    );
+  const thinkingBubbleItem = useMemo<BubbleItemType | null>(() => {
+    if (!draftThinkingVisible) return null;
 
     return {
-      key: "assistant-streaming",
+      key: "assistant-thinking",
       role: "assistant",
-      content,
+      content: (
+        <div className="thinking-block thinking-block-static">
+          <div className="thinking-block-title">{t("chat.thinking")}</div>
+          <div className="thinking-content">{draftThinking}</div>
+        </div>
+      ),
       streaming: isStreaming,
       status: "updating" as const,
       header: <MessageHeader label={t("chat.myPi")} meta={t("chat.streaming")} />
     };
-  }, [draftAssistant, draftThinking, draftToolMessages, isStreaming, t]);
+  }, [draftThinking, draftThinkingVisible, isStreaming, t]);
+
+  const streamingAssistantBubbleItem = useMemo<BubbleItemType | null>(() => {
+    if (!draftAssistant) return null;
+
+    return {
+      key: "assistant-streaming",
+      role: "assistant",
+      content: draftAssistant,
+      streaming: isStreaming,
+      status: "updating" as const,
+      header: <MessageHeader label={t("chat.myPi")} meta={t("chat.streaming")} />
+    };
+  }, [draftAssistant, isStreaming, t]);
 
   const piHistoryBubbleItems = useMemo<BubbleItemType[]>(() => {
     const items = [...piHistoryMessages, ...piPendingMessages].map((message, index) =>
       createPiHistoryBubbleItem(message, index, t)
     );
-    if (!streamingBubbleItem && draftToolBubbleItems.length === 0) return items;
+    if (!thinkingBubbleItem && !streamingAssistantBubbleItem && draftToolBubbleItems.length === 0) return items;
 
     return [
       ...items,
       ...draftToolBubbleItems,
-      ...(streamingBubbleItem ? [streamingBubbleItem] : [])
+      ...(thinkingBubbleItem ? [thinkingBubbleItem] : []),
+      ...(streamingAssistantBubbleItem ? [streamingAssistantBubbleItem] : [])
     ];
-  }, [draftToolBubbleItems, piHistoryMessages, piPendingMessages, streamingBubbleItem, t]);
+  }, [draftToolBubbleItems, piHistoryMessages, piPendingMessages, streamingAssistantBubbleItem, t, thinkingBubbleItem]);
 
   const panelTitle = selectedPiSessionId
     ? piSessionDetail?.session.name || t("chat.piSession")
@@ -611,6 +636,12 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(PANEL_MODE_STORAGE_KEY, panelMode);
   }, [panelMode]);
+
+  useEffect(() => {
+    return () => {
+      clearThinkingFlushTimeout();
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -641,9 +672,7 @@ export default function App() {
     setPiSessionLoading(false);
     setPiSessionError(null);
     setPiPendingMessages([]);
-    setDraftAssistant("");
-    setDraftThinking("");
-    setDraftToolMessages(new Map());
+    resetStreamingDraft();
     setError(null);
     localStorage.removeItem(ACTIVE_SESSION_KEY);
     localStorage.removeItem(ACTIVE_PI_PROJECT_KEY);
@@ -662,9 +691,7 @@ export default function App() {
     setPiSessionLoading(true);
     setPiSessionError(null);
     setError(null);
-    setDraftAssistant("");
-    setDraftThinking("");
-    setDraftToolMessages(new Map());
+    resetStreamingDraft();
     setPiPendingMessages([]);
 
     if (options?.persist !== false) {
@@ -999,11 +1026,33 @@ export default function App() {
 
     setInput("");
     setSelectedImage(null);
-    setDraftAssistant("");
-    setDraftThinking("");
-    setDraftToolMessages(new Map());
+    resetStreamingDraft();
     setError(null);
     setIsStreaming(true);
+
+    let streamState = createPiSessionStreamingState(panelMode);
+    setDraftThinkingVisible(streamState.thinkingVisible);
+
+    const syncStreamingDraft = () => {
+      setDraftAssistant(streamState.assistant);
+      setDraftThinkingVisible(streamState.thinkingVisible);
+      setDraftThinking(streamState.visibleThinking);
+      setDraftToolMessages(new Map(streamState.activeToolMessages));
+    };
+
+    const flushThinkingDraft = () => {
+      thinkingFlushTimeoutRef.current = null;
+      streamState = flushPiSessionThinking(streamState);
+      syncStreamingDraft();
+    };
+
+    const scheduleThinkingFlush = () => {
+      if (thinkingFlushTimeoutRef.current !== null) return;
+
+      thinkingFlushTimeoutRef.current = window.setTimeout(() => {
+        flushThinkingDraft();
+      }, 75);
+    };
 
     try {
       const response = await fetch("/api/chat", {
@@ -1029,60 +1078,30 @@ export default function App() {
         throw new Error(body?.error || `Request failed with ${response.status}`);
       }
 
-      let finalMessage: (AssistantMessage & { content: string; provider: string; model: string; timestamp: number }) | null = null;
-      // Collect intermediate tool messages that appeared during streaming.
-      const intermediateToolMessages: Array<{ toolName: string; content: string; isError: boolean }> = [];
       await readEventStream(response, (streamEvent) => {
-        if (streamEvent.type === "delta") {
-          setDraftAssistant((current) => current + streamEvent.delta);
-        }
+        streamState = applyPiSessionStreamingEvent(streamState, streamEvent);
 
         if (streamEvent.type === "thinking") {
-          setDraftThinking((current) => current + streamEvent.delta);
+          if (streamState.acceptsThinking && streamState.bufferedThinking) {
+            scheduleThinkingFlush();
+          }
+          return;
         }
 
-        if (streamEvent.type === "tool_start") {
-          setDraftToolMessages((prev) => {
-            const next = new Map(prev);
-            next.set(streamEvent.toolCallId, { toolName: streamEvent.toolName, content: "", isError: false });
-            return next;
-          });
+        clearThinkingFlushTimeout();
+        if (streamEvent.type !== "done" && streamEvent.type !== "error") {
+          streamState = flushPiSessionThinking(streamState);
         }
-
-        if (streamEvent.type === "tool_delta") {
-          setDraftToolMessages((prev) => {
-            const next = new Map(prev);
-            const existing = next.get(streamEvent.toolCallId);
-            if (existing) {
-              next.set(streamEvent.toolCallId, { ...existing, content: existing.content + streamEvent.delta });
-            }
-            return next;
-          });
-        }
-
-        if (streamEvent.type === "tool_end") {
-          const entry = { toolName: streamEvent.toolName, content: streamEvent.content, isError: streamEvent.isError };
-          intermediateToolMessages.push(entry);
-          setDraftToolMessages((prev) => {
-            const next = new Map(prev);
-            next.delete(streamEvent.toolCallId);
-            return next;
-          });
-        }
-
-        if (streamEvent.type === "done") {
-          finalMessage = streamEvent.message;
-        }
+        syncStreamingDraft();
 
         if (streamEvent.type === "error") {
-          finalMessage = streamEvent.message || null;
           setError(streamEvent.error);
         }
       });
 
-      if (finalMessage) {
+      if (streamState.finalMessage) {
         // Build the assistant message with intermediate tool results embedded.
-        const fm = finalMessage! as AssistantMessage;
+        const fm = streamState.finalMessage as AssistantMessage;
         const finalAssistantMsg: AssistantMessage = {
           role: "assistant",
           content: fm.content,
@@ -1098,7 +1117,7 @@ export default function App() {
           images: userMessage.images,
           timestamp: userMessage.timestamp
         };
-        const toolMsgs: Extract<PiHistoryMessage, { role: "tool" }>[] = intermediateToolMessages.map(
+        const toolMsgs: Extract<PiHistoryMessage, { role: "tool" }>[] = streamState.completedToolMessages.map(
           (tool, index) =>
             ({
               id: `tool-${Date.now()}-${index}`,
@@ -1121,7 +1140,6 @@ export default function App() {
                 messages: [
                   ...current.messages,
                   pendingUserMsg,
-                  ...toolMsgs,
                   {
                     id: finalAssistantMsg.content.slice(0, 32),
                     role: "assistant",
@@ -1129,7 +1147,8 @@ export default function App() {
                     provider: finalAssistantMsg.provider,
                     model: finalAssistantMsg.model,
                     timestamp: finalAssistantMsg.timestamp
-                  } as Extract<PiHistoryMessage, { role: "assistant" }>
+                  } as Extract<PiHistoryMessage, { role: "assistant" }>,
+                  ...toolMsgs
                 ]
               }
             : current
@@ -1144,9 +1163,7 @@ export default function App() {
       }
       setPiPendingMessages([]);
     } finally {
-      setDraftAssistant("");
-      setDraftThinking("");
-      setDraftToolMessages(new Map());
+      resetStreamingDraft();
       setIsStreaming(false);
     }
   }

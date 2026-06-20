@@ -1054,6 +1054,22 @@ h2 {
   overflow: hidden;
 }
 
+.thinking-block-static {
+  margin-bottom: 0;
+}
+
+.thinking-block-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  color: var(--ink-secondary);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
 .thinking-block summary {
   display: flex;
   align-items: center;
@@ -1075,6 +1091,12 @@ h2 {
 .thinking-block summary::before {
   content: "🧠";
   font-size: 14px;
+}
+
+.thinking-block-title::after {
+  content: "🧠";
+  font-size: 14px;
+  order: -1;
 }
 
 .thinking-content {
