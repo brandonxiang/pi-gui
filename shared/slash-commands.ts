@@ -41,6 +41,31 @@ export function parseSlashCommandInput(input: string): ParsedSlashCommand | null
   };
 }
 
+export function shouldShowSlashSuggestions(input: string): boolean {
+  return /^\/[\w-]*$/.test(input);
+}
+
+export function findMatchingAppSlashCommands(query: string): AppSlashCommand[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  return appSlashCommands.filter((command) =>
+    command.name.toLowerCase().includes(normalizedQuery)
+  );
+}
+
+export function getSlashAutocompleteValue(
+  input: string,
+  skillNames: string[]
+): string | null {
+  if (!shouldShowSlashSuggestions(input)) return null;
+
+  const query = input.slice(1).trim().toLowerCase();
+  const firstCommand = findMatchingAppSlashCommands(query)[0];
+  if (firstCommand) return `/${firstCommand.name}`;
+
+  const firstSkill = skillNames.find((name) => name.toLowerCase().includes(query));
+  return firstSkill ? `/${firstSkill}` : null;
+}
+
 export function findAppSlashCommand(name: string): AppSlashCommand | null {
   const normalizedName = name.toLowerCase();
   return appSlashCommands.find((command) => command.name === normalizedName) || null;

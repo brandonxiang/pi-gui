@@ -19,8 +19,11 @@ import {
 import {
   appSlashCommands,
   findAppSlashCommand,
+  findMatchingAppSlashCommands,
+  getSlashAutocompleteValue,
   isServerAppSlashCommand,
-  parseSlashCommandInput
+  parseSlashCommandInput,
+  shouldShowSlashSuggestions
 } from "../shared/slash-commands.js";
 import type {
   AssistantMessage,
@@ -444,19 +447,13 @@ function readFileAsBase64(file: File) {
   });
 }
 
-function shouldShowSlashSuggestions(value: string) {
-  return /^\/[\w-]*$/.test(value);
-}
-
 function getSlashSuggestionItems(
   t: Translator,
   skills: Skill[],
   info?: SlashSuggestionInfo
 ): SuggestionItem[] {
   const query = info?.query.toLowerCase() || "";
-  const matchedCommands = appSlashCommands.filter((command) =>
-    command.name.toLowerCase().includes(query)
-  );
+  const matchedCommands = findMatchingAppSlashCommands(query);
   const matchedSkills = skills.filter((skill) =>
     skill.name.toLowerCase().includes(query)
   );
@@ -1769,6 +1766,21 @@ export default function App() {
                       }}
                       onKeyDown={(event) => {
                         event.stopPropagation();
+
+                        if (!event.shiftKey && event.key === "Tab") {
+                          const autocompleteValue = getSlashAutocompleteValue(
+                            input,
+                            skills.map((skill) => skill.name)
+                          );
+
+                          if (autocompleteValue) {
+                            event.preventDefault();
+                            handleSlashSelect(autocompleteValue);
+                            onTrigger(false);
+                            return;
+                          }
+                        }
+
                         onKeyDown(event);
                       }}
                       onSubmit={submitMessage}

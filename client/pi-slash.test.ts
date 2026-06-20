@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   appSlashCommands,
   findAppSlashCommand,
+  findMatchingAppSlashCommands,
+  getSlashAutocompleteValue,
   isServerAppSlashCommand,
-  parseSlashCommandInput
+  parseSlashCommandInput,
+  shouldShowSlashSuggestions
 } from "../shared/slash-commands.js";
 
 describe("parseSlashCommandInput", () => {
@@ -50,5 +53,32 @@ describe("app slash command registry", () => {
   it("tracks where each supported slash command comes from", () => {
     expect(findAppSlashCommand("settings")?.source).toBe("app");
     expect(findAppSlashCommand("compact")?.source).toBe("pi");
+  });
+
+  it("matches slash suggestions from app commands in registry order", () => {
+    expect(findMatchingAppSlashCommands("co").map((command) => command.name)).toEqual([
+      "copy",
+      "compact"
+    ]);
+  });
+});
+
+describe("slash autocomplete helpers", () => {
+  it("shows suggestions only for single-line slash prefixes", () => {
+    expect(shouldShowSlashSuggestions("/co")).toBe(true);
+    expect(shouldShowSlashSuggestions("/compact now")).toBe(false);
+    expect(shouldShowSlashSuggestions("compact")).toBe(false);
+  });
+
+  it("prefers app commands when tab-completing", () => {
+    expect(getSlashAutocompleteValue("/co", ["compact-helper"])).toBe("/copy");
+  });
+
+  it("falls back to skills when no app command matches", () => {
+    expect(getSlashAutocompleteValue("/gr", ["grill-me", "diagnose"])).toBe("/grill-me");
+  });
+
+  it("returns null when the current input should not trigger suggestions", () => {
+    expect(getSlashAutocompleteValue("/compact now", ["compact-helper"])).toBeNull();
   });
 });
