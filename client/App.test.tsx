@@ -3,6 +3,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { PiHistoryMessage } from "./types";
 
 const mockState = vi.hoisted(() => ({
   projects: [] as Array<{
@@ -27,10 +28,10 @@ const mockState = vi.hoisted(() => ({
           created: string;
           modified: string;
         };
-        messages: [];
+        messages: PiHistoryMessage[];
       }
     | null,
-  pendingChatPromise: null as Promise<unknown> | null
+  pendingChatPromise: null as Promise<Response> | null
 }));
 
 vi.mock("@ant-design/x/es/x-provider", () => ({
@@ -38,8 +39,32 @@ vi.mock("@ant-design/x/es/x-provider", () => ({
 }));
 
 vi.mock("@ant-design/x/es/bubble", () => {
-  function BubbleList() {
-    return <div data-testid="bubble-list" />;
+  function BubbleList({
+    items
+  }: {
+    items: Array<{
+      key: string | number;
+      role: string;
+      header?: React.ReactNode;
+      content?: React.ReactNode;
+    }>;
+  }) {
+    return (
+      <div className="ant-bubble-list-scroll-box" data-testid="bubble-list">
+        <div className="ant-bubble-list-scroll-content">
+          {items.map((item) => (
+            <div
+              className={item.role === "user" ? "chat-bubble-user" : item.role === "divider" ? "chat-bubble-divider" : "chat-bubble"}
+              data-role={item.role}
+              key={item.key}
+            >
+              {item.header}
+              {item.content}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return {
@@ -180,6 +205,10 @@ vi.mock("./MarkdownContent", () => ({
   default: ({ content }: { content: string }) => <div>{content}</div>
 }));
 
+vi.mock("./Minimap", () => ({
+  default: () => <div data-testid="minimap" />
+}));
+
 vi.mock("./TerminalPanel", () => ({
   TerminalPanel: () => <div className="terminal-panel" data-testid="terminal-panel" tabIndex={0} />
 }));
@@ -189,10 +218,25 @@ import App from "./App";
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 function createJsonResponse(body: unknown, ok = true) {
-  return {
-    ok,
-    json: async () => body
-  };
+  return new Response(JSON.stringify(body), {
+    status: ok ? 200 : 500,
+    headers: {
+      "Content-Type": "application/json"
+    }
+  });
+}
+
+function createStreamResponse(events: Array<Record<string, unknown>>) {
+  const encoder = new TextEncoder();
+  const payload = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("");
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(payload));
+      controller.close();
+    }
+  });
+
+  return new Response(stream, { status: 200 });
 }
 
 async function flushEffects() {
@@ -436,7 +480,7 @@ describe("App sidebar shortcut", () => {
     expect(container.textContent).toContain("Second prompt");
   });
 
-  it("sends steering immediately from Cmd+Enter and shows it as active steering", async () => {
+  it("sends steering immediately from Cmd+Enter and renders it inside the transcript", async () => {
     seedSelectedPiSession();
     mockState.pendingChatPromise = new Promise((resolve) => {
       void resolve;
@@ -478,8 +522,9 @@ describe("App sidebar shortcut", () => {
     });
 
     expect((composer as HTMLTextAreaElement).value).toBe("");
-    expect(container.textContent).toContain("Active Steering");
+    expect(container.textContent).toContain("Steering");
     expect(container.textContent).toContain("Steer now");
+    expect(container.textContent).not.toContain("Active Steering");
     expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).endsWith("/api/chat/steer"))).toBe(true);
   });
 
@@ -538,5 +583,157 @@ describe("App sidebar shortcut", () => {
 
     expect(container.textContent).toContain("Second prompt");
     expect(container.textContent).not.toContain("Third prompt");
+  });
+
+  it("delivers queued following-up messages as normal user bubbles after streaming finishes", async () => {
+    seedSelectedPiSession();
+
+    let chatCallCount = 0;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.endsWith("/api/skills")) {
+        return createJsonResponse({ skills: [] });
+      }
+      if (url.endsWith("/api/models")) {
+        return createJsonResponse({ models: [] });
+      }
+      if (url.endsWith("/api/cwd")) {
+        return createJsonResponse({ cwd: "/tmp/workspace" });
+      }
+      if (url.endsWith("/api/pi-sessions")) {
+        return createJsonResponse({ projects: mockState.projects });
+      }
+      if (url.includes("/api/pi-sessions/")) {
+        return createJsonResponse(mockState.sessionDetail);
+      }
+      if (url.endsWith("/api/chat/steer")) {
+        return createJsonResponse({ ok: true });
+      }
+      if (url.endsWith("/api/chat")) {
+        chatCallCount += 1;
+
+        if (chatCallCount === 1) {
+          mockState.sessionDetail = {
+            session: mockState.sessionDetail!.session,
+            messages: [
+              {
+                id: "first-user",
+                role: "user",
+                content: "First prompt",
+                timestamp: Date.now()
+              },
+              {
+                id: "first-assistant",
+                role: "assistant",
+                content: "First answer",
+                provider: "openai",
+                model: "gpt-4o-mini",
+                timestamp: Date.now() + 1
+              }
+            ]
+          };
+
+          return createStreamResponse([
+            {
+              type: "done",
+              message: {
+                role: "assistant",
+                content: "First answer",
+                provider: "openai",
+                model: "gpt-4o-mini",
+                timestamp: Date.now() + 1
+              }
+            }
+          ]);
+        }
+
+        mockState.sessionDetail = {
+          session: mockState.sessionDetail!.session,
+          messages: [
+            {
+              id: "first-user",
+              role: "user",
+              content: "First prompt",
+              timestamp: Date.now()
+            },
+            {
+              id: "first-assistant",
+              role: "assistant",
+              content: "First answer",
+              provider: "openai",
+              model: "gpt-4o-mini",
+              timestamp: Date.now() + 1
+            },
+            {
+              id: "second-user",
+              role: "user",
+              content: "Second prompt",
+              timestamp: Date.now() + 2
+            },
+            {
+              id: "second-assistant",
+              role: "assistant",
+              content: "Second answer",
+              provider: "openai",
+              model: "gpt-4o-mini",
+              timestamp: Date.now() + 3
+            }
+          ]
+        };
+
+        return createStreamResponse([
+          {
+            type: "done",
+            message: {
+              role: "assistant",
+              content: "Second answer",
+              provider: "openai",
+              model: "gpt-4o-mini",
+              timestamp: Date.now() + 3
+            }
+          }
+        ]);
+      }
+
+      throw new Error(`Unhandled fetch: ${url}`);
+    });
+
+    await act(async () => {
+      root.render(<App />);
+    });
+    await flushEffects();
+    await flushEffects();
+
+    const composer = container.querySelector("textarea");
+    const submitButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Submit"
+    );
+
+    expect(composer).toBeInstanceOf(HTMLTextAreaElement);
+    expect(submitButton).toBeInstanceOf(HTMLButtonElement);
+
+    await act(async () => {
+      setTextareaValue(composer as HTMLTextAreaElement, "First prompt");
+    });
+    await act(async () => {
+      submitButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    await act(async () => {
+      setTextareaValue(composer as HTMLTextAreaElement, "Second prompt");
+    });
+    await act(async () => {
+      submitButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    await flushEffects();
+    await flushEffects();
+
+    expect(chatCallCount).toBe(2);
+    expect(container.textContent).toContain("First prompt");
+    expect(container.textContent).toContain("Second prompt");
+    expect(container.textContent).toContain("Second answer");
+    expect(container.textContent).not.toContain("Following up");
   });
 });

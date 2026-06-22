@@ -100,6 +100,12 @@ export type PiHistoryMessage =
     }
   | {
       id: string;
+      role: "steering";
+      content: string;
+      timestamp: number;
+    }
+  | {
+      id: string;
       role: "assistant";
       content: string;
       provider?: string;
@@ -373,6 +379,17 @@ function normalizeMessageEntry(entry: PiSessionEntryLike): PiHistoryMessage[] {
 
   if (message.role === "custom") {
     if (!message.display) return [];
+
+    if (message.customType === "steering") {
+      return [
+        {
+          id: entry.id,
+          role: "steering",
+          content: normalizeContentToText(message.content),
+          timestamp
+        }
+      ];
+    }
 
     return [
       {

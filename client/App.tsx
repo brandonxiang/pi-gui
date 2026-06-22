@@ -68,6 +68,7 @@ const STORAGE_KEY = "my-pi-chat-session";
 const SESSIONS_STORAGE_KEY = "my-pi-chat-sessions";
 const ACTIVE_SESSION_KEY = "my-pi-active-session-id";
 const ACTIVE_PI_PROJECT_KEY = "my-pi-active-pi-project-path";
+const FOLLOW_UP_QUEUES_STORAGE_KEY = "my-pi-follow-up-queues";
 const ARCHIVED_PI_SESSIONS_KEY = "my-pi-archived-pi-sessions";
 const supportedImageMimeTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 const maxImageBytes = 5 * 1024 * 1024;
@@ -113,10 +114,7 @@ type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 type QueuedComposerMessage = {
   id: string;
   content: string;
-};
-type ActiveSteeringMessage = {
-  id: string;
-  content: string;
+  image?: ImageAttachment;
 };
 type ComposerSubmitMode = "default" | "steering";
 
@@ -385,6 +383,34 @@ function PiLocalResultContent({
   );
 }
 
+function StreamingErrorContent({ message }: { message: string }) {
+  return (
+    <div className="pi-local-result-card pi-local-result-card-error">
+      <p>{message}</p>
+    </div>
+  );
+}
+
+function PiSteeringMessageContent({
+  locale,
+  message,
+  t
+}: {
+  locale: Locale;
+  message: Extract<PiHistoryMessage, { role: "steering" }>;
+  t: Translator;
+}) {
+  return (
+    <div className="pi-steering-marker">
+      <span className="pi-steering-marker-label">{t("chat.steering")}</span>
+      <span className="pi-steering-marker-text">{message.content}</span>
+      <time className="pi-steering-marker-time" dateTime={new Date(message.timestamp).toISOString()}>
+        {new Date(message.timestamp).toLocaleTimeString(locale)}
+      </time>
+    </div>
+  );
+}
+
 function createBubbleItem(
   message: ChatMessage,
   index: number,
@@ -410,7 +436,12 @@ function createBubbleItem(
   };
 }
 
-function createPiHistoryBubbleItem(entry: PiHistoryTranscriptEntry, index: number, t: Translator): BubbleItemType {
+function createPiHistoryBubbleItem(
+  entry: PiHistoryTranscriptEntry,
+  index: number,
+  locale: Locale,
+  t: Translator
+): BubbleItemType {
   if (entry.role === "tool-group") {
     return {
       key: `${entry.role}-${entry.timestamp}-${index}`,
@@ -440,6 +471,16 @@ function createPiHistoryBubbleItem(entry: PiHistoryTranscriptEntry, index: numbe
           meta={entry.provider && entry.model ? `${entry.provider}/${entry.model}` : t("chat.assistant")}
         />
       )
+    };
+  }
+
+  if (entry.role === "steering") {
+    return {
+      key: `${entry.role}-${entry.timestamp}-${index}`,
+      role: "divider",
+      content: <PiSteeringMessageContent locale={locale} message={entry} t={t} />,
+      className: "chat-bubble-divider",
+      dividerProps: { plain: true }
     };
   }
 
@@ -538,6 +579,38 @@ function readStoredMessages(): ChatMessage[] {
   }
 }
 
+function readStoredFollowUpQueues(): Record<string, QueuedComposerMessage[]> {
+  try {
+    const raw = localStorage.getItem(FOLLOW_UP_QUEUES_STORAGE_KEY);
+    if (!raw) return {};
+
+    const parsed = JSON.parse(raw) as Record<string, QueuedComposerMessage[]>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function readStoredFollowUpsForSession(sessionId: string): QueuedComposerMessage[] {
+  return readStoredFollowUpQueues()[sessionId] ?? [];
+}
+
+function writeStoredFollowUpsForSession(sessionId: string, queue: QueuedComposerMessage[]) {
+  try {
+    const nextQueues = readStoredFollowUpQueues();
+
+    if (queue.length === 0) {
+      delete nextQueues[sessionId];
+    } else {
+      nextQueues[sessionId] = queue;
+    }
+
+    localStorage.setItem(FOLLOW_UP_QUEUES_STORAGE_KEY, JSON.stringify(nextQueues));
+  } catch {
+    // Ignore storage failures and keep queue state in memory.
+  }
+}
+
 async function readEventStream(response: Response, onEvent: (event: StreamEvent) => void) {
   if (!response.body) throw new Error("No response stream returned.");
 
@@ -597,6 +670,7 @@ export default function App() {
     }
   });
   const [draftAssistant, setDraftAssistant] = useState("");
+  const [draftError, setDraftError] = useState<string | null>(null);
   const [draftThinking, setDraftThinking] = useState("");
   const [draftThinkingVisible, setDraftThinkingVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -620,7 +694,6 @@ export default function App() {
   const [piSessionError, setPiSessionError] = useState<string | null>(null);
   const [piSessionLoading, setPiSessionLoading] = useState(false);
   const [draftToolMessages, setDraftToolMessages] = useState<Map<string, { toolName: string; content: string; isError: boolean }>>(new Map());
-  const [activeSteering, setActiveSteering] = useState<ActiveSteeringMessage | null>(null);
   const [queuedFollowUps, setQueuedFollowUps] = useState<QueuedComposerMessage[]>([]);
   const [launcherMode, setLauncherMode] = useState<LauncherMode>(null);
   const [newSessionQuery, setNewSessionQuery] = useState("");
@@ -636,6 +709,9 @@ export default function App() {
 
   const didHydrateSelectionRef = useRef(false);
   const piSessionRequestIdRef = useRef(0);
+  const followUpDrainAttemptedSessionRef = useRef<string | null>(null);
+  const followUpDrainInFlightRef = useRef(false);
+  const followUpDrainRequestedRef = useRef(false);
   const projectFileInputRef = useRef<HTMLInputElement>(null);
   const chatPanelRef = useRef<HTMLElement | null>(null);
   const thinkingFlushTimeoutRef = useRef<number | null>(null);
@@ -681,8 +757,20 @@ export default function App() {
     renameTargetId !== null ||
     launcherMode !== null;
 
+  function updateQueuedFollowUps(
+    updater: (current: QueuedComposerMessage[]) => QueuedComposerMessage[]
+  ) {
+    if (!selectedPiSessionId) return;
+
+    setQueuedFollowUps((current) => {
+      const nextQueue = updater(current);
+      writeStoredFollowUpsForSession(selectedPiSessionId, nextQueue);
+      return nextQueue;
+    });
+  }
+
   function removeQueuedFollowUp(id: string) {
-    setQueuedFollowUps((current) => current.filter((item) => item.id !== id));
+    updateQueuedFollowUps((current) => current.filter((item) => item.id !== id));
   }
 
   function clearThinkingFlushTimeout() {
@@ -694,6 +782,7 @@ export default function App() {
   function resetStreamingDraft() {
     clearThinkingFlushTimeout();
     setDraftAssistant("");
+    setDraftError(null);
     setDraftThinking("");
     setDraftThinkingVisible(false);
     setDraftToolMessages(new Map());
@@ -749,21 +838,50 @@ export default function App() {
     };
   }, [draftAssistant, isStreaming, t]);
 
+  const streamingErrorBubbleItem = useMemo<BubbleItemType | null>(() => {
+    if (!draftError) return null;
+
+    return {
+      key: "assistant-error",
+      role: "assistant",
+      content: <StreamingErrorContent message={draftError} />,
+      header: <MessageHeader label={t("chat.myPi")} meta={t("chat.error")} />
+    };
+  }, [draftError, t]);
+
   const piHistoryBubbleItems = useMemo<BubbleItemType[]>(() => {
     const items = groupPiHistoryMessages([
       ...piHistoryMessages,
       ...piLocalMessages,
       ...piPendingMessages
-    ]).map((entry, index) => createPiHistoryBubbleItem(entry, index, t));
-    if (!thinkingBubbleItem && !streamingAssistantBubbleItem && draftToolBubbleItems.length === 0) return items;
+    ]).map((entry, index) => createPiHistoryBubbleItem(entry, index, locale, t));
+    if (
+      !thinkingBubbleItem &&
+      !streamingAssistantBubbleItem &&
+      !streamingErrorBubbleItem &&
+      draftToolBubbleItems.length === 0
+    ) {
+      return items;
+    }
 
     return [
       ...items,
       ...draftToolBubbleItems,
       ...(thinkingBubbleItem ? [thinkingBubbleItem] : []),
-      ...(streamingAssistantBubbleItem ? [streamingAssistantBubbleItem] : [])
+      ...(streamingAssistantBubbleItem ? [streamingAssistantBubbleItem] : []),
+      ...(streamingErrorBubbleItem ? [streamingErrorBubbleItem] : [])
     ];
-  }, [draftToolBubbleItems, piHistoryMessages, piLocalMessages, piPendingMessages, streamingAssistantBubbleItem, t, thinkingBubbleItem]);
+  }, [
+    draftToolBubbleItems,
+    locale,
+    piHistoryMessages,
+    piLocalMessages,
+    piPendingMessages,
+    streamingAssistantBubbleItem,
+    streamingErrorBubbleItem,
+    t,
+    thinkingBubbleItem
+  ]);
 
   const userBubbleCount = useMemo(
     () => piHistoryBubbleItems.filter((item) => item.role === "user").length,
@@ -853,6 +971,19 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("my-pi-model", modelKey);
   }, [modelKey]);
+
+  useEffect(() => {
+    if (!selectedPiSessionId) {
+      setQueuedFollowUps([]);
+      followUpDrainAttemptedSessionRef.current = null;
+      followUpDrainRequestedRef.current = false;
+      return;
+    }
+
+    setQueuedFollowUps(readStoredFollowUpsForSession(selectedPiSessionId));
+    followUpDrainAttemptedSessionRef.current = null;
+    followUpDrainRequestedRef.current = false;
+  }, [selectedPiSessionId]);
 
   function persistSelectedPiSession(sessionId: string, projectPath: string | null) {
     localStorage.setItem(ACTIVE_SESSION_KEY, sessionId);
@@ -1412,6 +1543,179 @@ export default function App() {
     }
   }
 
+  function queueFollowUpMessage(message: QueuedComposerMessage) {
+    followUpDrainRequestedRef.current = true;
+    updateQueuedFollowUps((current) => [...current, message]);
+  }
+
+  async function runPiPrompt(userMessage: UserMessage) {
+    if (activePanelView.kind !== "pi") return;
+
+    const sessionId = activePanelView.sessionId;
+
+    setPiPendingMessages([
+      {
+        id: `pi-user-${userMessage.timestamp}`,
+        role: "user",
+        content: userMessage.content,
+        images: userMessage.images,
+        timestamp: userMessage.timestamp
+      }
+    ]);
+
+    setInput("");
+    setSelectedImage(null);
+    resetStreamingDraft();
+    setError(null);
+    setIsStreaming(true);
+
+    let streamState = createPiSessionStreamingState(panelMode);
+    setDraftThinkingVisible(streamState.thinkingVisible);
+
+    const syncStreamingDraft = () => {
+      setDraftAssistant(streamState.assistant);
+      setDraftError(streamState.error);
+      setDraftThinkingVisible(streamState.thinkingVisible);
+      setDraftThinking(streamState.visibleThinking);
+      setDraftToolMessages(new Map(streamState.activeToolMessages));
+    };
+
+    const flushThinkingDraft = () => {
+      thinkingFlushTimeoutRef.current = null;
+      streamState = flushPiSessionThinking(streamState);
+      syncStreamingDraft();
+    };
+
+    const scheduleThinkingFlush = () => {
+      if (thinkingFlushTimeoutRef.current !== null) return;
+
+      thinkingFlushTimeoutRef.current = window.setTimeout(() => {
+        flushThinkingDraft();
+      }, 75);
+    };
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-pi-session-id": sessionId
+        },
+        body: JSON.stringify({
+          ...selectedModel,
+          prompt: userMessage.content,
+          thinkingLevel:
+            (localStorage.getItem(THINKING_LEVEL_STORAGE_KEY) as ThinkingLevel | null) ||
+            "high",
+          images: userMessage.images?.map((image) => ({
+            name: image.name,
+            mimeType: image.mimeType,
+            size: image.size,
+            data: image.data
+          }))
+        })
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error || `Request failed with ${response.status}`);
+      }
+
+      await readEventStream(response, (streamEvent) => {
+        streamState = applyPiSessionStreamingEvent(streamState, streamEvent);
+
+        if (streamEvent.type === "thinking") {
+          if (streamState.acceptsThinking && streamState.bufferedThinking) {
+            scheduleThinkingFlush();
+          }
+          return;
+        }
+
+        clearThinkingFlushTimeout();
+        if (streamEvent.type !== "done" && streamEvent.type !== "error") {
+          streamState = flushPiSessionThinking(streamState);
+        }
+        syncStreamingDraft();
+
+        if (streamEvent.type === "error") {
+          setError(streamEvent.error);
+        }
+      });
+
+      if (streamState.finalMessage) {
+        fetchContextUsage(sessionId);
+
+        const fm = streamState.finalMessage as AssistantMessage;
+        const finalAssistantMsg: AssistantMessage = {
+          role: "assistant",
+          content: fm.content,
+          provider: fm.provider,
+          model: fm.model,
+          timestamp: fm.timestamp
+        };
+
+        const pendingUserMsg: PiHistoryMessage = {
+          id: `pi-user-${Date.now()}`,
+          role: "user",
+          content: userMessage.content,
+          images: userMessage.images,
+          timestamp: userMessage.timestamp
+        };
+        const toolBaseTimestamp = finalAssistantMsg.timestamp - streamState.completedToolMessages.length;
+        const toolMsgs: Extract<PiHistoryMessage, { role: "tool" }>[] = streamState.completedToolMessages.map(
+          (tool, index) =>
+            ({
+              id: `tool-${Date.now()}-${index}`,
+              role: "tool",
+              toolName: tool.toolName,
+              content: tool.content,
+              isError: tool.isError,
+              expandable: true,
+              timestamp: toolBaseTimestamp + index
+            }) as Extract<PiHistoryMessage, { role: "tool" }>
+        );
+        setPiSessionDetail((current) =>
+          current
+            ? {
+                ...current,
+                session: {
+                  ...current.session,
+                  modified: new Date(finalAssistantMsg.timestamp).toISOString()
+                },
+                messages: [
+                  ...current.messages,
+                  pendingUserMsg,
+                  ...toolMsgs,
+                  {
+                    id: finalAssistantMsg.content.slice(0, 32),
+                    role: "assistant",
+                    content: finalAssistantMsg.content,
+                    provider: finalAssistantMsg.provider,
+                    model: finalAssistantMsg.model,
+                    timestamp: finalAssistantMsg.timestamp
+                  } as Extract<PiHistoryMessage, { role: "assistant" }>
+                ]
+              }
+            : current
+        );
+        setPiPendingMessages([]);
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message === "No response stream returned.") {
+        setError(t("errors.streamMissing"));
+      } else {
+        setError(err instanceof Error ? err.message : t("errors.unexpectedChat"));
+      }
+      setPiPendingMessages([]);
+      throw err;
+    } finally {
+      if (!streamState.error) {
+        resetStreamingDraft();
+      }
+      setIsStreaming(false);
+    }
+  }
+
   async function submitLocalSlashAction(trimmedInput: string): Promise<boolean> {
     const parsed = parseSlashCommandInput(trimmedInput);
     if (!parsed) return false;
@@ -1496,28 +1800,33 @@ export default function App() {
     if ((!trimmed && !selectedImage) || activePanelView.kind !== "pi") return;
 
     if (isStreaming) {
-      if (!trimmed) return;
       if (mode === "steering") {
         const queuedImage = selectedImage;
-        setActiveSteering({
-          id: crypto.randomUUID(),
-          content: trimmed
-        });
+        const steeringContent = trimmed || t("composer.defaultImagePrompt");
+        const steeringId = `pi-steering-${Date.now()}`;
+        setPiLocalMessages((current) => [
+          ...current,
+          {
+            id: steeringId,
+            role: "steering",
+            content: steeringContent,
+            timestamp: Date.now()
+          }
+        ]);
         setInput("");
         setSelectedImage(null);
         setError(null);
-        void submitSteeringMessage(trimmed, queuedImage).catch((err) => {
+        void submitSteeringMessage(steeringContent, queuedImage).catch((err) => {
+          setPiLocalMessages((current) => current.filter((message) => message.id !== steeringId));
           setError(err instanceof Error ? err.message : t("errors.unexpectedChat"));
         });
         return;
       }
-      setQueuedFollowUps((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          content: trimmed
-        }
-      ]);
+      queueFollowUpMessage({
+        id: crypto.randomUUID(),
+        content: trimmed || t("composer.defaultImagePrompt"),
+        image: selectedImage || undefined
+      });
       setInput("");
       setSelectedImage(null);
       setError(null);
@@ -1539,169 +1848,59 @@ export default function App() {
       images: selectedImage ? [selectedImage] : undefined,
       timestamp: Date.now()
     };
-
-    setPiPendingMessages([
-      {
-        id: `pi-user-${userMessage.timestamp}`,
-        role: "user",
-        content: userMessage.content,
-        images: userMessage.images,
-        timestamp: userMessage.timestamp
-      }
-    ]);
-
-    setInput("");
-    setSelectedImage(null);
-    resetStreamingDraft();
-    setError(null);
-    setIsStreaming(true);
-
-    let streamState = createPiSessionStreamingState(panelMode);
-    setDraftThinkingVisible(streamState.thinkingVisible);
-
-    const syncStreamingDraft = () => {
-      setDraftAssistant(streamState.assistant);
-      setDraftThinkingVisible(streamState.thinkingVisible);
-      setDraftThinking(streamState.visibleThinking);
-      setDraftToolMessages(new Map(streamState.activeToolMessages));
-    };
-
-    const flushThinkingDraft = () => {
-      thinkingFlushTimeoutRef.current = null;
-      streamState = flushPiSessionThinking(streamState);
-      syncStreamingDraft();
-    };
-
-    const scheduleThinkingFlush = () => {
-      if (thinkingFlushTimeoutRef.current !== null) return;
-
-      thinkingFlushTimeoutRef.current = window.setTimeout(() => {
-        flushThinkingDraft();
-      }, 75);
-    };
-
     try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-pi-session-id": activePanelView.sessionId
-        },
-        body: JSON.stringify({
-          ...selectedModel,
-          prompt: userMessage.content,
-          thinkingLevel:
-            (localStorage.getItem(THINKING_LEVEL_STORAGE_KEY) as ThinkingLevel | null) ||
-            "high",
-          images: userMessage.images?.map((image) => ({
-            name: image.name,
-            mimeType: image.mimeType,
-            size: image.size,
-            data: image.data
-          }))
-        })
-      });
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        throw new Error(body?.error || `Request failed with ${response.status}`);
-      }
-
-      await readEventStream(response, (streamEvent) => {
-        streamState = applyPiSessionStreamingEvent(streamState, streamEvent);
-
-        if (streamEvent.type === "thinking") {
-          if (streamState.acceptsThinking && streamState.bufferedThinking) {
-            scheduleThinkingFlush();
-          }
-          return;
-        }
-
-        clearThinkingFlushTimeout();
-        if (streamEvent.type !== "done" && streamEvent.type !== "error") {
-          streamState = flushPiSessionThinking(streamState);
-        }
-        syncStreamingDraft();
-
-        if (streamEvent.type === "error") {
-          setError(streamEvent.error);
-        }
-      });
-
-      if (streamState.finalMessage) {
-        // Refresh context usage after a turn completes
-      if (activePanelView.kind === "pi") {
-        fetchContextUsage(activePanelView.sessionId);
-      }
-
-      // Build the assistant message with intermediate tool results embedded.
-        const fm = streamState.finalMessage as AssistantMessage;
-        const finalAssistantMsg: AssistantMessage = {
-          role: "assistant",
-          content: fm.content,
-          provider: fm.provider,
-          model: fm.model,
-          timestamp: fm.timestamp
-        };
-
-        const pendingUserMsg: PiHistoryMessage = {
-          id: `pi-user-${Date.now()}`,
-          role: "user",
-          content: userMessage.content,
-          images: userMessage.images,
-          timestamp: userMessage.timestamp
-        };
-        const toolBaseTimestamp = finalAssistantMsg.timestamp - streamState.completedToolMessages.length;
-        const toolMsgs: Extract<PiHistoryMessage, { role: "tool" }>[] = streamState.completedToolMessages.map(
-          (tool, index) =>
-            ({
-              id: `tool-${Date.now()}-${index}`,
-              role: "tool",
-              toolName: tool.toolName,
-              content: tool.content,
-              isError: tool.isError,
-              expandable: true,
-              timestamp: toolBaseTimestamp + index
-            }) as Extract<PiHistoryMessage, { role: "tool" }>
-        );
-        setPiSessionDetail((current) =>
-          current
-            ? {
-                ...current,
-                session: {
-                  ...current.session,
-                  modified: new Date(finalAssistantMsg.timestamp).toISOString()
-                },
-                messages: [
-                  ...current.messages,
-                  pendingUserMsg,
-                  ...toolMsgs,
-                  {
-                    id: finalAssistantMsg.content.slice(0, 32),
-                    role: "assistant",
-                    content: finalAssistantMsg.content,
-                    provider: finalAssistantMsg.provider,
-                    model: finalAssistantMsg.model,
-                    timestamp: finalAssistantMsg.timestamp
-                  } as Extract<PiHistoryMessage, { role: "assistant" }>
-                ]
-              }
-            : current
-        );
-        setPiPendingMessages([]);
-      }
-    } catch (err) {
-      if (err instanceof Error && err.message === "No response stream returned.") {
-        setError(t("errors.streamMissing"));
-      } else {
-        setError(err instanceof Error ? err.message : t("errors.unexpectedChat"));
-      }
-      setPiPendingMessages([]);
-    } finally {
-      resetStreamingDraft();
-      setIsStreaming(false);
+      await runPiPrompt(userMessage);
+    } catch {
+      // Error state is handled inside runPiPrompt.
     }
   }
+
+  async function drainNextQueuedFollowUp() {
+    if (
+      activePanelView.kind !== "pi" ||
+      followUpDrainInFlightRef.current ||
+      isStreaming ||
+      queuedFollowUps.length === 0
+    ) {
+      return;
+    }
+
+    const [nextFollowUp, ...remainingFollowUps] = queuedFollowUps;
+    followUpDrainInFlightRef.current = true;
+    writeStoredFollowUpsForSession(activePanelView.sessionId, remainingFollowUps);
+    setQueuedFollowUps(remainingFollowUps);
+
+    try {
+      await runPiPrompt({
+        role: "user",
+        content: nextFollowUp.content,
+        images: nextFollowUp.image ? [nextFollowUp.image] : undefined,
+        timestamp: Date.now()
+      });
+      followUpDrainRequestedRef.current = remainingFollowUps.length > 0;
+    } catch {
+      writeStoredFollowUpsForSession(activePanelView.sessionId, [nextFollowUp, ...remainingFollowUps]);
+      setQueuedFollowUps([nextFollowUp, ...remainingFollowUps]);
+      followUpDrainRequestedRef.current = false;
+    } finally {
+      followUpDrainInFlightRef.current = false;
+    }
+  }
+
+  useEffect(() => {
+    if (activePanelView.kind !== "pi" || !piSessionDetail || isStreaming || queuedFollowUps.length === 0) {
+      return;
+    }
+
+    const shouldAttemptHydratedDrain =
+      followUpDrainAttemptedSessionRef.current !== activePanelView.sessionId;
+    if (!followUpDrainRequestedRef.current && !shouldAttemptHydratedDrain) {
+      return;
+    }
+
+    followUpDrainAttemptedSessionRef.current = activePanelView.sessionId;
+    void drainNextQueuedFollowUp();
+  }, [activePanelView, drainNextQueuedFollowUp, isStreaming, piSessionDetail, queuedFollowUps.length]);
 
   function handleSenderSubmit(messageText: string) {
     void submitMessage(messageText);
@@ -1976,7 +2175,7 @@ export default function App() {
                     onNavigate={handleMinimapNavigate}
                   />
                 )}
-                {error && <div className="error-banner">{error}</div>}
+                {error && !draftError ? <div className="error-banner">{error}</div> : null}
               </div>
             )}
 
@@ -2016,34 +2215,23 @@ export default function App() {
 
             {activePanelView.kind === "pi" ? (
               <div className="composer">
-                {activeSteering ? (
-                  <div className="composer-queue-header">
-                    <div className="composer-queue-title">{t("composer.activeSteering")}</div>
-                    <div className="composer-queue-preview">{activeSteering.content}</div>
-                  </div>
-                ) : null}
                 {queuedFollowUps.length > 0 ? (
                   <div className="composer-queue-header">
                     <div className="composer-queue-title">{t("composer.followingUp")}</div>
-                    <div className="composer-queue-preview">
-                      {queuedFollowUps[0]?.content}
+                    <div className="composer-queue-list">
+                      {queuedFollowUps.map((item) => (
+                        <div className="composer-queue-item" key={item.id}>
+                          <span>{item.content}</span>
+                          <button
+                            type="button"
+                            aria-label={`Remove queued follow-up: ${item.content}`}
+                            onClick={() => removeQueuedFollowUp(item.id)}
+                          >
+                            {t("composer.remove")}
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                    {queuedFollowUps.length > 1 ? (
-                      <div className="composer-queue-list">
-                        {queuedFollowUps.map((item) => (
-                          <div className="composer-queue-item" key={item.id}>
-                            <span>{item.content}</span>
-                            <button
-                              type="button"
-                              aria-label={`Remove queued follow-up: ${item.content}`}
-                              onClick={() => removeQueuedFollowUp(item.id)}
-                            >
-                              {t("composer.remove")}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
                   </div>
                 ) : null}
                 {selectedImage ? (

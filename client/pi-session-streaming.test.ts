@@ -139,8 +139,37 @@ describe("Pi Session streaming transcript state", () => {
       error: "Agent failed"
     });
 
-    expect(getDisplayKinds(state)).toEqual([]);
+    expect(getPiSessionStreamingDisplayItems(state)).toEqual([
+      {
+        kind: "error",
+        content: "Agent failed"
+      }
+    ]);
     expect(state.error).toBe("Agent failed");
+  });
+
+  it("keeps partial assistant output visible when the stream ends in error", () => {
+    let state = createPiSessionStreamingState("chat");
+
+    state = applyPiSessionStreamingEvent(state, {
+      type: "delta",
+      delta: "Partial answer"
+    });
+    state = applyPiSessionStreamingEvent(state, {
+      type: "error",
+      error: "Provider auth failed"
+    });
+
+    expect(getPiSessionStreamingDisplayItems(state)).toEqual([
+      {
+        kind: "assistant",
+        content: "Partial answer"
+      },
+      {
+        kind: "error",
+        content: "Provider auth failed"
+      }
+    ]);
   });
 
   it("keeps terminal-mode streaming tool visibility intact", () => {

@@ -70,6 +70,12 @@ export type PiHistoryMessage =
     }
   | {
       id: string;
+      role: "steering";
+      content: string;
+      timestamp: number;
+    }
+  | {
+      id: string;
       role: "assistant";
       content: string;
       provider?: string;

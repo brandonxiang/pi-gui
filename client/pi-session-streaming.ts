@@ -17,6 +17,10 @@ export type PiSessionStreamingDisplayItem =
       kind: "assistant";
       content: string;
     }
+  | {
+      kind: "error";
+      content: string;
+    }
   | ({
       kind: "tool";
       streaming: true;
@@ -187,6 +191,13 @@ export function getPiSessionStreamingDisplayItems(
     items.push({
       kind: "assistant",
       content: state.assistant
+    });
+  }
+
+  if (state.error) {
+    items.push({
+      kind: "error",
+      content: state.error
     });
   }
 

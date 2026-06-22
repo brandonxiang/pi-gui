@@ -995,6 +995,36 @@ h2 {
   background: var(--card-tint-sky);
 }
 
+.chat-bubble-divider {
+  width: 100%;
+}
+
+.pi-steering-marker {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--ink-faint);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pi-steering-marker-label {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pi-steering-marker-text {
+  color: var(--ink-secondary);
+  font-size: 13px;
+}
+
+.pi-steering-marker-time {
+  color: var(--ink-faint);
+}
+
 .message-content {
   display: grid;
   gap: 12px;
@@ -1497,12 +1527,6 @@ h2 {
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-}
-
-.composer-queue-preview {
-  color: var(--ink);
-  font-size: 14px;
-  line-height: 1.4;
 }
 
 .composer-queue-list {

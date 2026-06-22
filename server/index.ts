@@ -31,6 +31,7 @@ import {
   loadPiSessionContextById,
   loadPiSessionDetailById
 } from "./pi-sessions.js";
+import { buildAgentEndStreamEvent } from "./chat-streaming.js";
 import {
   findAppSlashCommand,
   isServerAppSlashCommand,
@@ -834,16 +835,15 @@ async function buildServer() {
         }
 
         if (event.type === "agent_end") {
-          sendEvent(raw, {
-            type: "done",
-            message: {
-              role: "assistant",
-              content: finalText,
+          sendEvent(
+            raw,
+            buildAgentEndStreamEvent({
+              messages: event.messages,
+              finalText,
               provider,
-              model: modelId,
-              timestamp: Date.now()
-            }
-          });
+              model: modelId
+            })
+          );
         }
       });
 
@@ -909,9 +909,16 @@ async function buildServer() {
         return { error: "Pi session not found" };
       }
 
-      await persistedSession.session.steer(
-        prompt,
-        images.length > 0 ? images : undefined
+      await persistedSession.session.sendCustomMessage(
+        {
+          customType: "steering",
+          content:
+            images.length > 0
+              ? [{ type: "text" as const, text: prompt }, ...images]
+              : prompt,
+          display: true
+        },
+        { deliverAs: "steer" }
       );
       return { ok: true };
     } catch (error) {
